@@ -12,10 +12,29 @@ parseInterest(const Interest& interest)
 {
 }
 
+static void
+parseInterest(const std::list<Entry>& db, const uint8_t[128]& entry, Buffer& result)
+{
+  result.clear();
+  int counter = 0;
+  for (const auto& item : db) {
+    if (ipMatch ^ (item.ip & item.mask) == 0) {
+      // TODO: Freshness Check: TP + TTL compared with Current TP
+      std::copy(item.ip, item.ip + 128, result.end());
+      std::copy(item.mask, item.mask + 128, result.end());
+      auto block = item.prefix.wireEncode();
+      std::copy(block.wire(), block.wire() + 128, result.end());
+      counter++;
+    }
+    if (counter > 10)
+      break;
+  }
+}
+
 void
 NDServer::run()
 {
-  face.processEvents();
+  m_face.processEvents();
 }
 
 void
@@ -29,16 +48,19 @@ NDServer::registerPrefix(const Name& prefix)
 void
 NDServer::onInterest(const Interest& request)
 {
-  m_data = make_shared<Data>(m_options.dataName);
-  m_keyChain.sign(*m_data, security::SigningInfo(security::SigningInfo::SIGNER_TYPE_SHA256));
+  auto data = make_shared<Data>(request.getName());
+  uint8_t ipMatch[128] = {0};
+  ipMatch = entry.ip & entry.mask;
 
-  // // sign by identity
+  Buffer content;
+  parseInterest(m_db, ipMatch, content);
+  data->setContent(content);
+
+  m_keyChain.sign(*m_data, security::SigningInfo(security::SigningInfo::SIGNER_TYPE_SHA256));
   // security::SigningInfo signInfo(security::SigningInfo::SIGNER_TYPE_ID, m_options.identity);
   // m_keyChain.sign(*m_data, signInfo);
-
-  m_data->setFreshnessPeriod(time::milliseconds(4000));
-  Block dataBlock = m_data->wireEncode();
-  output(dataBlock);
+  data->setFreshnessPeriod(time::milliseconds(4000));
+  m_face.put(*data);
 }
 
 }

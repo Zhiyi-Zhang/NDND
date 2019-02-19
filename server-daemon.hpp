@@ -3,18 +3,20 @@
 // License: LGPL v3.0
 
 #include <ndn-cxx/name.hpp>
+#include <ndn-cxx/face.hpp>
 
 namespace ndn {
 namespace ndnd {
 
-class Entry
+class DBEntry
 {
 public:
   bool v4;
-  uint8_t[128] ip;
-  uint16 port;
-  uint32 ttl;
-  uint64 tp;
+  uint8_t ip[128];
+  uint8_t mask[128];
+  uint16_t port;
+  uint32_t ttl;
+  uint64_t tp;
   Name prefix;
 };
 
@@ -22,19 +24,20 @@ class NDServer
 {
 public:
   void
+  registerPrefix(const Name& prefix);
+
+  void
   run();
 
 private:
-  void
-  registerPrefix(const Name& prefix);
-
   void
   onInterest();
 
 private:
   Name m_prefix;
   Face m_face;
-  std::list<Entry> m_db;
+  KeyChain m_keyChain;
+  std::list<DBEntry> m_db;
 };
 
 } // namespace ndnd
