@@ -3,4 +3,5 @@ nd-server
 nd-client
 .vscode
 ._*
+*.dSYM
 
