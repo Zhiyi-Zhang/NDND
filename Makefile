@@ -1,5 +1,5 @@
 CXX = g++
-CXXFLAGS = -std=c++11 -Wall -Werror `pkg-config --cflags libndn-cxx`
+CXXFLAGS = -std=c++14 -Wall -Werror `pkg-config --cflags libndn-cxx`
 LIBS = `pkg-config --libs libndn-cxx`
 DESTDIR ?= /usr/local
 
