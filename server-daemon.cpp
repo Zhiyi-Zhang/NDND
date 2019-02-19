@@ -48,7 +48,11 @@ genReplyBuffer(const std::list<DBEntry>& db, const uint8_t (&ipMatch)[16], Buffe
       result.Port = item.port;
       memcpy(result.SubnetMask, item.mask, 16);
 
-      std::copy(&result, &result + sizeof(struct RESULT), resultBuf.end());
+      std::copy((uint8_t*)&result, (uint8_t*)&result + sizeof(struct RESULT), resultBuf.end());
+      // for (int i = resultBuf.size(); i < resultBuf.size() + sizeof(struct RESULT); i++) {
+      //   resultBuf[i] = &result
+      // }
+
       auto block = item.prefix.wireEncode();
       std::copy(block.wire(), block.wire() + block.size(), resultBuf.end());
       counter++;
