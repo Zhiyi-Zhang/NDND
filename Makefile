@@ -1,13 +1,16 @@
 CXX = g++
-CXXFLAGS = -std=c++14 -Wall -Werror `pkg-config --cflags libndn-cxx` -g
+CXXFLAGS = -std=c++14 -Wall `pkg-config --cflags libndn-cxx`
 LIBS = `pkg-config --libs libndn-cxx`
 DESTDIR ?= /usr/local
-
+SOURCE_OBJS = server-daemon.o nd-client.o nd-server.o
 PROGRAMS = nd-client nd-server
 
 all: $(PROGRAMS)
 
-%: %.cpp
+%.o: %.cpp
+	$(CXX) $(CXXFLAGS) -o $@ -c $< $(LIBS)
+
+%: $(SOURCE_OBJS)
 	$(CXX) $(CXXFLAGS) -o $@ $< $(LIBS)
 
 clean:

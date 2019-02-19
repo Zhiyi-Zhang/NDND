@@ -31,7 +31,7 @@ public:
 
 private:
   void
-  onInterest();
+  onInterest(const Interest& request);
 
 private:
   Name m_prefix;
