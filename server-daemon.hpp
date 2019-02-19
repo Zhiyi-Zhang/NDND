@@ -12,8 +12,8 @@ class DBEntry
 {
 public:
   bool v4;
-  uint8_t ip[128];
-  uint8_t mask[128];
+  uint8_t ip[16];
+  uint8_t mask[16];
   uint16_t port;
   uint32_t ttl;
   uint64_t tp;

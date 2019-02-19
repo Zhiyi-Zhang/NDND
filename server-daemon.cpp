@@ -3,31 +3,54 @@
 // License: LGPL v3.0
 
 #include "server-daemon.hpp"
+#include "nd-packet-format.h"
 
 namespace ndn {
 namespace ndnd {
 
 static void
-parseInterest(const Interest& interest)
+parseInterest(const Interest& interest, DBEntry& entry)
 {
+  auto paramBlock = interest.getParameters();
+
+  struct PARAMETER param;
+  memcpy(&param, paramBlock.value(), sizeof(struct PARAMETER));
+  Name prefix;
+  Block nameBlock(paramBlock.value() + sizeof(struct PARAMETER),
+                  paramBlock.value_size() - sizeof(struct PARAMETER));
+  prefix.wireDecode(nameBlock);
+
+  entry.v4 = (param.V4 == 1)? 1 : 0;
+  memcpy(entry.ip, param.IpAddr, 16);
+  memcpy(entry.mask, param.SubnetMask, 16);
+  entry.port = param.Port;
+  entry.ttl = param.TTL;
+  entry.tp = param.TimeStamp;
+  entry.prefix = prefix;
 }
 
 static void
-parseInterest(const std::list<DBEntry>& db, const uint8_t (&ipMatch)[], Buffer& result)
+genReplyBuffer(const std::list<DBEntry>& db, const uint8_t (&ipMatch)[16], Buffer& resultBuf)
 {
-  result.clear();
+  resultBuf.clear();
   int counter = 0;
   for (const auto& item : db) {
-    uint8_t itemIpPrefix[128] = {0};
-    for (int i = 0; i < 128; i++) {
+    uint8_t itemIpPrefix[16] = {0};
+    for (int i = 0; i < 16; i++) {
       itemIpPrefix[i] = item.ip[i] & item.mask[i];
     }
-    if (memcmp(ipMatch, itemIpPrefix, 128) == 0) {
+    if (memcmp(ipMatch, itemIpPrefix, 16) == 0) {
       // TODO: Freshness Check: TP + TTL compared with Current TP
-      std::copy(item.ip, item.ip + 128, result.end());
-      std::copy(item.mask, item.mask + 128, result.end());
+
+      struct RESULT result;
+      result.V4 = item.v4? 1 : 0;
+      memcpy(result.IpAddr, item.ip, 16);
+      result.Port = item.port;
+      memcpy(result.SubnetMask, item.mask, 16);
+
+      std::copy(&result, &result + sizeof(struct RESULT), resultBuf.end());
       auto block = item.prefix.wireEncode();
-      std::copy(block.wire(), block.wire() + 128, result.end());
+      std::copy(block.wire(), block.wire() + block.size(), resultBuf.end());
       counter++;
     }
     if (counter > 10)
@@ -52,13 +75,17 @@ NDServer::registerPrefix(const Name& prefix)
 void
 NDServer::onInterest(const Interest& request)
 {
-  auto data = make_shared<Data>(request.getName());
-  uint8_t ipMatch[128] = {0};
-  for (int i = 0; i < 128; i++) {
+  DBEntry entry;
+  parseInterest(request, entry);
+  m_db.push_back(entry);
+  uint8_t ipMatch[16] = {0};
+  for (int i = 0; i < 16; i++) {
     ipMatch[i] = entry.ip[i] & entry.mask[i];
   }
+
+  auto data = make_shared<Data>(request.getName());
   Buffer contentBuf;
-  parseInterest(m_db, ipMatch, contentBuf);
+  genReplyBuffer(m_db, ipMatch, contentBuf);
   data->setContent(contentBuf.get<uint8_t>(), contentBuf.size());
 
   m_keyChain.sign(*data, security::SigningInfo(security::SigningInfo::SIGNER_TYPE_SHA256));
