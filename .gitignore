@@ -4,4 +4,4 @@ nd-client
 .vscode
 ._*
 *.dSYM
-
+*.o
