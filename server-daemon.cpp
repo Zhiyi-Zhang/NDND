@@ -4,6 +4,7 @@
 
 #include "server-daemon.hpp"
 #include "nd-packet-format.h"
+#include <iostream>
 
 namespace ndn {
 namespace ndnd {
@@ -15,6 +16,12 @@ parseInterest(const Interest& interest, DBEntry& entry)
 
   struct PARAMETER param;
   memcpy(&param, paramBlock.value(), sizeof(struct PARAMETER));
+
+  for (int i = 0; i < paramBlock.value_size(); i++) {
+    printf("%02x", paramBlock.value()[i]);
+  }
+    // std::cout << std::hex << paramBlock.value()[i];
+
   Name prefix;
   Block nameBlock(paramBlock.value() + sizeof(struct PARAMETER),
                   paramBlock.value_size() - sizeof(struct PARAMETER));
@@ -27,6 +34,9 @@ parseInterest(const Interest& interest, DBEntry& entry)
   entry.ttl = param.TTL;
   entry.tp = param.TimeStamp;
   entry.prefix = prefix;
+
+  std::cout << "finish parse" << std::endl
+            << prefix.toUri() << std::endl;
 }
 
 static void
@@ -38,6 +48,7 @@ genReplyBuffer(const std::list<DBEntry>& db, const uint8_t (&ipMatch)[16], Buffe
     uint8_t itemIpPrefix[16] = {0};
     for (int i = 0; i < 16; i++) {
       itemIpPrefix[i] = item.ip[i] & item.mask[i];
+      std::cout << itemIpPrefix[i] << std::endl;
     }
     if (memcmp(ipMatch, itemIpPrefix, 16) == 0) {
       // TODO: Freshness Check: TP + TTL compared with Current TP
@@ -48,18 +59,23 @@ genReplyBuffer(const std::list<DBEntry>& db, const uint8_t (&ipMatch)[16], Buffe
       result.Port = item.port;
       memcpy(result.SubnetMask, item.mask, 16);
 
-      std::copy((uint8_t*)&result, (uint8_t*)&result + sizeof(struct RESULT), resultBuf.end());
-      // for (int i = resultBuf.size(); i < resultBuf.size() + sizeof(struct RESULT); i++) {
-      //   resultBuf[i] = &result
-      // }
+      int max = resultBuf.size() + sizeof(struct RESULT);
+      for (int i = resultBuf.size(); i < max; i++) {
+        resultBuf.push_back(*((uint8_t*)&result + i));
+      }
+
 
       auto block = item.prefix.wireEncode();
-      std::copy(block.wire(), block.wire() + block.size(), resultBuf.end());
+      max = resultBuf.size() + block.size();
+      for (int i = resultBuf.size(); i < max; i++) {
+        resultBuf.push_back(*(block.wire() + i));
+      }
       counter++;
     }
     if (counter > 10)
       break;
   }
+  std::cout << "matched entries number" << counter << std::endl;
 }
 
 void
@@ -87,9 +103,12 @@ NDServer::onInterest(const Interest& request)
     ipMatch[i] = entry.ip[i] & entry.mask[i];
   }
 
+  std::cout << "are you okay"<< std::endl;
+
   auto data = make_shared<Data>(request.getName());
   Buffer contentBuf;
   genReplyBuffer(m_db, ipMatch, contentBuf);
+  std::cout << "hello"<< std::endl;
   data->setContent(contentBuf.get<uint8_t>(), contentBuf.size());
 
   m_keyChain.sign(*data, security::SigningInfo(security::SigningInfo::SIGNER_TYPE_SHA256));
