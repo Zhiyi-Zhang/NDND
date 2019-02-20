@@ -54,17 +54,26 @@ public:
   void onData(const Interest& interest, const Data& data){
     std::cout << data << std::endl;
 
-    //size_t dataSize = data.getContent().value_size();
-    //PRESULT pResult = data.getContent().value();
-    //int iNo = 1;
-    //while(pResult < data.getContent().value() + dataSize){
-    //  m_len = sizeof(RESULT);
-    //  printf("-----%2d-----\n", iNo);
-    //  printf("IP: %s\n", );
+    size_t dataSize = data.getContent().value_size();
+    auto pResult = reinterpret_cast<const RESULT*>(data.getContent().value());
+    int iNo = 1;
+    Name name;
 
-    //  pResult += m_len;
-    //  iNo ++;
-    //}
+    while((uint8_t*)pResult < data.getContent().value() + dataSize){
+      m_len = sizeof(RESULT);
+      printf("-----%2d-----\n", iNo);
+      printf("IP: %s\n", inet_ntoa(*(in_addr*)(pResult->IpAddr)));
+      printf("Port: %hu\n", ntohs(pResult->Port));
+      printf("Subnet Mask: %s\n", inet_ntoa(*(in_addr*)(pResult->SubnetMask)));
+
+      auto result = Block::fromBuffer(pResult->NamePrefix, data.getContent().value() + dataSize - pResult->NamePrefix);
+      name.wireDecode(std::get<1>(result));
+      printf("Name Prefix: %s\n", name.toUri().c_str());
+      m_len += std::get<1>(result).size();
+
+      pResult = reinterpret_cast<const RESULT*>(((uint8_t*)pResult) + m_len);
+      iNo ++;
+    }
   }
 
   void onNack(const Interest& interest, const lp::Nack& nack){
@@ -91,7 +100,8 @@ int main(int argc, char *argv[]){
   g_pClient = new NDNDClient();
 
   inet_aton(argv[1], &g_pClient->m_IP);
-  sscanf(argv[2], "%hd", &g_pClient->m_port);
+  sscanf(argv[2], "%hu", &g_pClient->m_port);
+  g_pClient->m_port = htons(g_pClient->m_port);
   inet_aton("255.255.255.0", &g_pClient->m_submask);
   g_pClient->m_namePrefix = Name("/test/01/02");
 
