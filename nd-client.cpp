@@ -96,22 +96,22 @@ public:
 };
 NDNDClient *g_pClient;
 
-int main(int argc, char *argv[]){
-  g_pClient = new NDNDClient();
+// int main(int argc, char *argv[]){
+//   g_pClient = new NDNDClient();
 
-  inet_aton(argv[1], &g_pClient->m_IP);
-  sscanf(argv[2], "%hu", &g_pClient->m_port);
-  g_pClient->m_port = htons(g_pClient->m_port);
-  inet_aton("255.255.255.0", &g_pClient->m_submask);
-  g_pClient->m_namePrefix = Name("/test/01/02");
+//   inet_aton(argv[1], &g_pClient->m_IP);
+//   sscanf(argv[2], "%hu", &g_pClient->m_port);
+//   g_pClient->m_port = htons(g_pClient->m_port);
+//   inet_aton("255.255.255.0", &g_pClient->m_submask);
+//   g_pClient->m_namePrefix = Name("/test/01/02");
 
-  try {
-    g_pClient->run();
-  }
-  catch (const std::exception& e) {
-    std::cerr << "ERROR: " << e.what() << std::endl;
-  }
+//   try {
+//     g_pClient->run();
+//   }
+//   catch (const std::exception& e) {
+//     std::cerr << "ERROR: " << e.what() << std::endl;
+//   }
 
-  delete g_pClient;
-  return 0;
-}
+//   delete g_pClient;
+//   return 0;
+// }
