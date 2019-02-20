@@ -8,7 +8,9 @@
 #include <boost/program_options/options_description.hpp>
 #include <boost/program_options/variables_map.hpp>
 #include <boost/program_options/parsers.hpp>
+#include <boost/asio.hpp>
 #include <ndn-cxx/face.hpp>
+#include <ndn-cxx/util/scheduler.hpp>
 
 using namespace std;
 
@@ -49,18 +51,31 @@ public:
     inet_aton("255.255.255.0", &m_client->m_submask);  // TODO: Bootstrap
     m_client->m_port = htons(6363);
     m_client->m_namePrefix = Name("/test/01/02");
-    
-    m_client->run();
+
+    m_scheduler = new Scheduler(m_io_service);
+
+    loop();
+    m_io_service.run();
+  }
+
+  void loop() {
+    m_scheduler->scheduleEvent(time::seconds(1), [this] {
+      m_client->run();
+      loop();
+    });
   }
 
   ~Program() {
     delete m_client;
+    delete m_scheduler;
   }
 
 
 private:
   const Options m_options;
   NDNDClient *m_client;
+  Scheduler *m_scheduler;
+  boost::asio::io_service m_io_service;
 };
 
 
