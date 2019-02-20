@@ -59,15 +59,13 @@ genReplyBuffer(const std::list<DBEntry>& db, const uint8_t (&ipMatch)[16], Buffe
       result.Port = item.port;
       memcpy(result.SubnetMask, item.mask, 16);
 
-      int max = resultBuf.size() + sizeof(struct RESULT);
-      for (int i = resultBuf.size(); i < max; i++) {
+      for (int i = 0; i < sizeof(struct RESULT); i++) {
         resultBuf.push_back(*((uint8_t*)&result + i));
       }
 
 
       auto block = item.prefix.wireEncode();
-      max = resultBuf.size() + block.size();
-      for (int i = resultBuf.size(); i < max; i++) {
+      for (int i =0; i < block.size(); i++) {
         resultBuf.push_back(*(block.wire() + i));
       }
       counter++;
