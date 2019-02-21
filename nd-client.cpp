@@ -59,7 +59,7 @@ public:
   }
 
   
-  void run(){
+  void sendNDNDInterest(){
     Interest interest(Name("/ndn/nd"));
     interest.setInterestLifetime(30_s);
     interest.setMustBeFresh(true);
@@ -78,8 +78,6 @@ public:
       bind(&NDNDClient::onData, this,  _1, _2),
       bind(&NDNDClient::onNack, this,  _1, _2),
       bind(&NDNDClient::onTimeout, this,  _1));
-
-    m_face.processEvents();
   }
 
 // private:
@@ -107,9 +105,6 @@ public:
 
       pResult = reinterpret_cast<const RESULT*>(((uint8_t*)pResult) + m_len);
       iNo ++;
-
-      // std::stringstream ss;
-      // ss << inet_ntoa(*(in_addr*)(pResult->IpAddr)) << ':' << ntohs(pResult->Port);
 
       m_uri_to_prefix[ss.str()] = name.toUri();
       cout << "URI: " << ss.str() << endl;
@@ -254,7 +249,7 @@ public:
         send_rib_register_interest(it->second, face_id);
       }
       else {
-	std::cerr << "Failed to find prefix for uri " << uri << std::endl;
+	      std::cerr << "Failed to find prefix  for uri " << uri << std::endl;
       }
       
     }
@@ -362,15 +357,13 @@ public:
     m_client->m_port = htons(6363);
     m_client->m_namePrefix = Name("/test/01/02");
 
-    m_scheduler = new Scheduler(m_io_service);
-
+    m_scheduler = new Scheduler(m_client->m_face.getIoService());
     loop();
-    m_io_service.run();
   }
 
   void loop() {
+    m_client->sendNDNDInterest();
     m_scheduler->scheduleEvent(time::seconds(1), [this] {
-      m_client->run();
       loop();
     });
   }
@@ -380,10 +373,10 @@ public:
     delete m_scheduler;
   }
 
+  NDNDClient *m_client;
 
 private:
   const Options m_options;
-  NDNDClient *m_client;
   Scheduler *m_scheduler;
   boost::asio::io_service m_io_service;
 };
@@ -394,4 +387,5 @@ main(int argc, char** argv)
 {
   Options opt;
   Program program(opt);
+  program.m_client->m_face.processEvents();
 }
