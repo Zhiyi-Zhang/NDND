@@ -6,9 +6,12 @@
 #include <chrono>
 #include <ndn-cxx/util/sha256.hpp>
 #include "nd-packet-format.h"
+#include "nfd-command-tlv.h"
+#include <ndn-cxx/encoding/tlv.hpp>
 using namespace ndn;
 using namespace ndn::ndnd;
 using namespace std;
+
 
 class NDNDClient{
 public:
@@ -17,15 +20,21 @@ public:
     Interest interest(Name("/localhost/nfd/rib/register"));
     interest.setInterestLifetime(5_s);
     interest.setMustBeFresh(true);
+    Block control_params = make_rib_register_interest_parameter(route_name, face_id);
+    const_cast<Name&>(interest.getName()).append(control_params);
     interest.setParameters(m_buffer, m_len);
     interest.setNonce(4);
     interest.setCanBePrefix(false);
 
-    name::Component parameterDigest = name::Component::fromParametersSha256Digest(
-      util::Sha256::computeDigest(interest.getParameters().wire(), interest.getParameters().size()));
-
-    const_cast<Name&>(interest.getName()).append(parameterDigest);
-
+    uint64_t now = std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::system_clock::now().time_since_epoch()).count();
+    const_cast<Name&>(interest.getName()).appendNumber(now);
+    const_cast<Name&>(interest.getName()).appendNumber(now);
+    
+    m_keyChain.sign(interest);
+    
+    std::cerr << "Name of interest sent:" << std::endl;
+    std::cerr << interest.getName().toUri() << std::endl;
+    
     m_face.expressInterest(
       interest, 
       bind(&NDNDClient::onNFDCommandData, this,  _1, _2),
@@ -57,6 +66,48 @@ public:
     m_face.processEvents();
   }
 
+  Block make_rib_register_interest_parameter(const Name& route_name, int face_id) {
+    
+    std::cerr << "1" << std::endl;
+    auto block = makeEmptyBlock(CONTROL_PARAMETERS);
+    
+    Block route_name_block = route_name.wireEncode();    
+    
+    Block face_id_block =
+      makeNonNegativeIntegerBlock(FACE_ID, face_id);
+
+    Block origin_block =
+      makeNonNegativeIntegerBlock(ORIGIN, 0xFF);
+
+    Block cost_block =
+      makeNonNegativeIntegerBlock(COST, 0);
+
+    Block flags_block =
+      makeNonNegativeIntegerBlock(FLAGS, 0x01);
+    
+    std::cerr << "2" << std::endl;
+    
+    block.push_back(route_name_block);
+    block.push_back(face_id_block);
+    block.push_back(origin_block);
+    block.push_back(cost_block);
+    block.push_back(flags_block);
+    
+    std::cerr << "Route name block:" << std::endl;
+    std::cerr << route_name_block << std::endl;
+    std::cerr << "Face id block:" << std::endl;
+    std::cerr << face_id_block << std::endl;
+    
+    std::cerr << "Control parameters block:" << std::endl;
+    std::cerr << block << std::endl;
+    
+    block.encode();  
+    // memcpy(m_buffer, block.begin().base(), block.size());
+    // m_len = block.size();
+
+    return block;    
+  }
+  
   void make_NDND_interest_parameter(){
     auto pParam = reinterpret_cast<PPARAMETER>(m_buffer);
     m_len = sizeof(PARAMETER);
@@ -73,13 +124,6 @@ public:
     m_len += block.end() - block.begin();
   }
 
-  void make_rib_register_interest_parameter(const Name& route_name, int face_id) {
-
-    
-    
-  }
-
-  
   void onData(const Interest& interest, const Data& data){
     std::cout << data << std::endl;
 
@@ -104,7 +148,8 @@ public:
       iNo ++;
     }
 
-    send_interest();
+    Name test_name("/test2");
+    send_rib_register_interest(test_name, 259);
   }
 
   void onNack(const Interest& interest, const lp::Nack& nack){
@@ -118,6 +163,11 @@ public:
 
   void onNFDCommandData(const Interest& interest, const Data& data){
     std::cout << "onNFDCommandData got called." << std::endl;
+
+    data.getContent().parse();
+    data.getContent().get(CONTROL_RESPONSE).parse();
+    std::cerr << data.getContent() << std::endl;
+    
   }
 
   void onNFDCommandNack(const Interest& interest, const lp::Nack& nack){
@@ -131,6 +181,7 @@ public:
   
 public:
   Face m_face;
+  KeyChain m_keyChain;
   Name m_namePrefix;
   in_addr m_IP;
   in_addr m_submask;
@@ -141,8 +192,6 @@ public:
 NDNDClient *g_pClient;
 
 int main(int argc, char *argv[]){
-
-  std::cerr << "1" << std::endl;
   
   g_pClient = new NDNDClient();
 
@@ -152,8 +201,6 @@ int main(int argc, char *argv[]){
   inet_aton("255.255.255.0", &g_pClient->m_submask);
   g_pClient->m_namePrefix = Name("/test/01/02");
 
-  std::cerr << "2" << std::endl;
-  
   try {
     g_pClient->run();
   }
@@ -162,8 +209,7 @@ int main(int argc, char *argv[]){
   }
 
   delete g_pClient;
-
-  std::cerr << "3" << std::endl;
   
   return 0;
+  
 }
