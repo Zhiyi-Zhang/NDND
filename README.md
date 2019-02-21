@@ -67,7 +67,11 @@ Signature:
 ```
 
 #### Local NFD:
-ND-Client manages the local NFD to create new face(s) and new route(s) to the neighbors.
+ND-Client manages the local NFD to create new face(s) and new route(s) to the neighbors. It uses the NFD Management Protocol (which can be found here https://redmine.named-data.net/projects/nfd/wiki/Management) in order to do the following things: 
+
+##### Create a face for all URI's it receives from the ND-Server
+
+##### Create a route for all URI and prefix pairs it receives from the ND-Server
 
 ## Try NDND in 3 Steps
 
