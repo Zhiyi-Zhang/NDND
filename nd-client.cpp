@@ -8,14 +8,35 @@
 #include "nd-packet-format.h"
 #include "nfd-command-tlv.h"
 #include <ndn-cxx/encoding/tlv.hpp>
+#include <ndn-cxx/util/scheduler.hpp>
+#include <boost/asio.hpp>
 #include <sstream>
 using namespace ndn;
 using namespace ndn::ndnd;
 using namespace std;
 
 
+class Options
+{
+public:
+  Options()
+    : prefix("/ndn/nd")
+  {
+  }
+
+public:
+  ndn::Name prefix;
+};
+
+
 class NDNDClient{
 public:
+
+  // NDNDClient() 
+  //   : //m_face(m_io_service),
+  //     // m_scheduler(m_io_service)
+  // {
+  // }
   
   void send_rib_register_interest(const Name& route_name, int face_id) {
     Interest interest(Name("/localhost/nfd/rib/register"));
@@ -334,24 +355,76 @@ public:
 };
 NDNDClient *g_pClient;
 
-int main(int argc, char *argv[]){
-  g_pClient = new NDNDClient();
+// int main(int argc, char *argv[]){
+//   g_pClient = new NDNDClient();
 
-  inet_aton(argv[1], &g_pClient->m_IP);
-  sscanf(argv[2], "%hu", &g_pClient->m_port);
-  g_pClient->m_port = htons(g_pClient->m_port);
-  inet_aton("255.255.255.0", &g_pClient->m_submask);
-  g_pClient->m_namePrefix = Name("/test/01/02");
+//   inet_aton(argv[1], &g_pClient->m_IP);
+//   sscanf(argv[2], "%hu", &g_pClient->m_port);
+//   g_pClient->m_port = htons(g_pClient->m_port);
+//   inet_aton("255.255.255.0", &g_pClient->m_submask);
+//   g_pClient->m_namePrefix = Name("/test/01/02");
 
-  try {
-    g_pClient->run();
-    // g_pClient->addFace(string("udp4://127.0.1.1:6363"));
-    g_pClient->m_face.processEvents();
+//   boost::asio::io_service io_service_;
+//   Scheduler scheduler_(io_service_);
+
+//   try {
+//     // g_pClient->run();
+//     // g_pClient->addFace(string("udp4://127.0.1.1:6363"));
+//     g_pClient->m_io_service.run();
+//     g_pClient->loop();
+//     // g_pClient->m_face.processEvents();
+//   }
+//   catch (const std::exception& e) {
+//     std::cerr << "ERROR: " << e.what() << std::endl;
+//   }
+
+//   delete g_pClient;
+//   return 0;
+// }
+
+class Program
+{
+public:
+  explicit Program(const Options& options)
+    : m_options(options)
+  {
+    // Init client
+    m_client = new NDNDClient();
+    inet_aton("localhost", &m_client->m_IP);           // TODO: Bootstrap
+    inet_aton("255.255.255.0", &m_client->m_submask);  // TODO: Bootstrap
+    m_client->m_port = htons(6363);
+    m_client->m_namePrefix = Name("/test/01/02");
+
+    m_scheduler = new Scheduler(m_io_service);
+
+    loop();
+    m_io_service.run();
   }
-  catch (const std::exception& e) {
-    std::cerr << "ERROR: " << e.what() << std::endl;
+
+  void loop() {
+    m_scheduler->scheduleEvent(time::seconds(1), [this] {
+      m_client->run();
+      loop();
+    });
   }
 
-  delete g_pClient;
-  return 0;
+  ~Program() {
+    delete m_client;
+    delete m_scheduler;
+  }
+
+
+private:
+  const Options m_options;
+  NDNDClient *m_client;
+  Scheduler *m_scheduler;
+  boost::asio::io_service m_io_service;
+};
+
+
+int
+main(int argc, char** argv)
+{
+  Options opt;
+  Program program(opt);
 }
