@@ -205,7 +205,7 @@ public:
 
   }
 
-  void onAddFaceDataReply(const Interest& interest, const Data& data) {
+  void onAddFaceDataReply(const Interest& interest, const Data& data, const string& uri) {
     short response_code;
     char response_text[1000] = {0};
     char buf[1000]           = {0};   // For parsing
@@ -228,7 +228,7 @@ public:
     face_id = ntohs(*(int *)buf);
 
     std::cout << response_code << " " << response_text << ": Added Face (FaceId: " 
-              << face_id << ")" << std::endl;
+              << face_id << "): " << uri << std::endl;
   }
 
   void onDestroyFaceDataReply(const Interest& interest, const Data& data) {
@@ -272,7 +272,7 @@ public:
 
     m_face.expressInterest(
       interest, 
-      bind(&NDNDClient::onAddFaceDataReply, this, _1, _2),
+      bind(&NDNDClient::onAddFaceDataReply, this, _1, _2, uri),
       bind(&NDNDClient::onNack, this, _1, _2),
       bind(&NDNDClient::onTimeout, this, _1));
   }
@@ -321,8 +321,8 @@ int main(int argc, char *argv[]){
   g_pClient->m_namePrefix = Name("/test/01/02");
 
   try {
-    g_pClient->run();
-    //g_pClient->addFace(string("udp4://127.0.1.1:6363"));
+    // g_pClient->run();
+    g_pClient->addFace(string("udp4://127.0.1.1:6363"));
     g_pClient->m_face.processEvents();
   }
   catch (const std::exception& e) {
