@@ -22,11 +22,56 @@ There are three participants in NDND protocol.
 #### ND-Client:
 It sends out the query which carries the information of client itself (IP, Netmask, Port, TTL, Timestamp).
 
+##### Query Interest
+```
+Name: /ndn/nd/<parameter digest>
+Parameter:
+  Parameter-Type (T) Length (L)
+  {
+    uint8_t V4 // 1 if IPv4, 0 if IPv6
+    uint8_t IpAddr[16] // IP address
+    uint16_t Port // port number
+    uint8_t SubnetMask[16] // netmask
+    uint32_t TTL // time to live (millisecond)
+    uint64_t TimeStamp // unix time stamp
+    Name-TlV // a name TLV
+  }
+```
+
 #### ND-Server:
 It processes the query, adds the client information to the local database, collects the information of client’s neighbors (in the same LAN), and then replies.
 
+##### Data Reply
+```
+Name: /ndn/nd/<parameter digest>
+Content:
+  Content-Type (T) Length (L)
+  {
+    { // item 1
+      uint8_t V4 // 1 if IPv4, 0 if IPv6
+      uint8_t IpAddr[16] // IP address
+      uint16_t Port // port number
+      uint8_t SubnetMask[16] // netmask
+      Name-TlV // a name TLV
+    }
+    { // item 2
+      ...
+    }
+    { // item 3
+      ...
+    }
+    ...
+  }
+Signature:
+  SHA-256 Digest Signature
+```
+
 #### Local NFD:
-ND-Client manages the local NFD to create new face(s) and new route(s) to the neighbors.
+ND-Client manages the local NFD to create new face(s) and new route(s) to the neighbors. It uses the NFD Management Protocol (which can be found here https://redmine.named-data.net/projects/nfd/wiki/Management) in order to do the following things: 
+
+##### 1) Create a face for all URI's it receives from the ND-Server by sending a FIB Management control command (a signed interest)
+
+##### 2) Create a route for all URI and prefix pairs it receives from the ND-Server by sending a RIB Management control command (a signed interest)
 
 ## Try NDND in 3 Steps
 
@@ -46,11 +91,11 @@ Server side:
 ```
 ./nd-server
 ```
-Client side: 
+Client side:
 ```
 ./nd-client [IP] [Optional Port]
 ```
-An client side example: 
+An client side example:
 ```
 ./nd-client 1.1.1.1 6363
 ```
