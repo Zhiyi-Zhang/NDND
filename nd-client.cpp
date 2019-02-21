@@ -2,6 +2,8 @@
 #include <sys/socket.h>
 #include <netinet/in.h>
 #include <arpa/inet.h>
+#include <netdb.h>
+#include <ifaddrs.h>
 #include <iostream>
 #include <chrono>
 #include <ndn-cxx/util/sha256.hpp>
@@ -31,6 +33,12 @@ public:
 
 class NDNDClient{
 public:
+
+  NDNDClient() {
+    // Set IP and port
+    setIP();
+    m_port = htons(6363); // default
+  }
   
   void send_rib_register_interest(const Name& route_name, int face_id) {
     Interest interest(Name("/localhost/nfd/rib/register"));
@@ -331,6 +339,41 @@ public:
       bind(&NDNDClient::onTimeout, this, _1));
   }
 
+
+  void setIP() {
+    struct ifaddrs *ifaddr, *ifa;
+    int family, s;
+    char host[NI_MAXHOST];
+    char netmask[NI_MAXHOST];
+    if (getifaddrs(&ifaddr) == -1) {
+        perror("getifaddrs");
+        exit(EXIT_FAILURE);
+    }
+
+    for (ifa = ifaddr; ifa != NULL; ifa = ifa->ifa_next) {
+        if (ifa->ifa_addr == NULL)
+            continue;
+
+        s=getnameinfo(ifa->ifa_addr,sizeof(struct sockaddr_in),host, NI_MAXHOST, NULL, 0, NI_NUMERICHOST);
+        s=getnameinfo(ifa->ifa_netmask,sizeof(struct sockaddr_in),netmask, NI_MAXHOST, NULL, 0, NI_NUMERICHOST);
+
+        if (ifa->ifa_addr->sa_family==AF_INET) {
+            if (s != 0) {
+                printf("getnameinfo() failed: %s\n", gai_strerror(s));
+                exit(EXIT_FAILURE);
+            }
+            if (ifa->ifa_name[0] == 'l' && ifa->ifa_name[1] == 'o')   // Loopback
+              continue;
+            printf("\tInterface : <%s>\n", ifa->ifa_name);
+            printf("\t  Address : <%s>\n", host);
+            inet_aton(host, &m_IP);
+            inet_aton(netmask, &m_submask);
+            break;
+        }
+    }
+    freeifaddrs(ifaddr);
+  }
+
 public:
   Face m_face;
   KeyChain m_keyChain;
@@ -352,9 +395,9 @@ public:
   {
     // Init client
     m_client = new NDNDClient();
-    inet_aton("localhost", &m_client->m_IP);           // TODO: Bootstrap
-    inet_aton("255.255.255.0", &m_client->m_submask);  // TODO: Bootstrap
-    m_client->m_port = htons(6363);
+    // inet_aton("localhost", &m_client->m_IP);           // TODO: Bootstrap
+    // inet_aton("255.255.255.0", &m_client->m_submask);  // TODO: Bootstrap
+    // m_client->m_port = htons(6363);
     m_client->m_namePrefix = Name("/test/01/02");
 
     m_scheduler = new Scheduler(m_client->m_face.getIoService());
