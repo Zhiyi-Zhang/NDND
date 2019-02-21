@@ -80,6 +80,8 @@ public:
       m_len = sizeof(RESULT);
       printf("-----%2d-----\n", iNo);
       printf("IP: %s\n", inet_ntoa(*(in_addr*)(pResult->IpAddr)));
+      std::stringstream ss;
+      ss << "udp4://" << inet_ntoa(*(in_addr*)(pResult->IpAddr)) << ':' << ntohs(pResult->Port);
       printf("Port: %hu\n", ntohs(pResult->Port));
       printf("Subnet Mask: %s\n", inet_ntoa(*(in_addr*)(pResult->SubnetMask)));
 
@@ -91,11 +93,12 @@ public:
       pResult = reinterpret_cast<const RESULT*>(((uint8_t*)pResult) + m_len);
       iNo ++;
 
-      std::stringstream ss;
-      ss << inet_ntoa(*(in_addr*)(pResult->IpAddr)) << ':' << ntohs(pResult->Port);
+      // std::stringstream ss;
+      // ss << inet_ntoa(*(in_addr*)(pResult->IpAddr)) << ':' << ntohs(pResult->Port);
 
       m_uri_to_prefix[ss.str()] = name.toUri();
-
+      cout << "URI: " << ss.str() << endl;
+      addFace(ss.str());
     }
   }
 
@@ -219,18 +222,17 @@ public:
 
     Block status_code_block =       response_block.get(STATUS_CODE);
     Block status_text_block =       response_block.get(STATUS_TEXT);
-    Block status_parameter_block =  response_block.get(CONTROL_PARAMETERS);
     response_code = readNonNegativeIntegerAs<int>(status_code_block);
     memcpy(response_text, status_text_block.value(), status_text_block.value_size());
 
     // Get FaceId for future removal of the face
-    status_parameter_block.parse();
-    Block face_id_block = status_parameter_block.get(FACE_ID);
-    face_id = readNonNegativeIntegerAs<int>(face_id_block);
-    std::cout << response_code << " " << response_text << ": Added Face (FaceId: " 
-              << face_id << "): " << uri << std::endl;
-
     if (response_code == OK) {
+      Block status_parameter_block =  response_block.get(CONTROL_PARAMETERS);
+      status_parameter_block.parse();
+      Block face_id_block = status_parameter_block.get(FACE_ID);
+      face_id = readNonNegativeIntegerAs<int>(face_id_block);
+      std::cout << response_code << " " << response_text << ": Added Face (FaceId: " 
+                << face_id << "): " << uri << std::endl;
 
       auto it = m_uri_to_prefix.find(uri);
       if (it != m_uri_to_prefix.end()) {
@@ -288,6 +290,7 @@ public:
     const_cast<Name&>(interest.getName()).appendNumber(now);
     
     m_keyChain.sign(interest);
+    cout << interest.getName().toUri() << endl;
 
     m_face.expressInterest(
       interest, 
