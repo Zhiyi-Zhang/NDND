@@ -7,6 +7,7 @@
 #include <ndn-cxx/util/sha256.hpp>
 #include "nd-packet-format.h"
 #include "nfd-command-tlv.h"
+#include <ndn-cxx/encoding/tlv.hpp>
 using namespace ndn;
 using namespace ndn::ndnd;
 using namespace std;
@@ -36,7 +37,7 @@ public:
     
     m_face.expressInterest(
       interest, 
-      bind(&NDNDClient::onNFDCommandData, this,  _1, _2),
+      bind(&NDNDClient::onRegisterRouteDataReply, this,  _1, _2),
       bind(&NDNDClient::onNack, this,  _1, _2),
       bind(&NDNDClient::onTimeout, this,  _1));  
   }
@@ -89,6 +90,9 @@ public:
       pResult = reinterpret_cast<const RESULT*>(((uint8_t*)pResult) + m_len);
       iNo ++;
     }
+
+    Name name_test("test");
+    send_rib_register_interest(name_test, 259);
   }
 
   void onNack(const Interest& interest, const lp::Nack& nack){
@@ -103,7 +107,6 @@ public:
 
   Block make_rib_register_interest_parameter(const Name& route_name, int face_id) {
     
-    std::cerr << "1" << std::endl;
     auto block = makeEmptyBlock(CONTROL_PARAMETERS);
     
     Block route_name_block = route_name.wireEncode();    
@@ -120,8 +123,6 @@ public:
     Block flags_block =
       makeNonNegativeIntegerBlock(FLAGS, 0x01);
     
-    std::cerr << "2" << std::endl;
-    
     block.push_back(route_name_block);
     block.push_back(face_id_block);
     block.push_back(origin_block);
@@ -137,10 +138,9 @@ public:
     std::cerr << block << std::endl;
     
     block.encode();  
-    // memcpy(m_buffer, block.begin().base(), block.size());
-    // m_len = block.size();
 
-    return block;    
+    return block;
+    
   }
   
   void make_NDND_interest_parameter(){
@@ -159,14 +159,51 @@ public:
     m_len += block.end() - block.begin();
   }
 
-  void onNFDCommandData(const Interest& interest, const Data& data){
-    std::cout << "onNFDCommandData got called." << std::endl;
+  void onRegisterRouteDataReply(const Interest& interest, const Data& data){
+    Block response_block = data.getContent().blockFromValue();
+    response_block.parse();
+    
+    std::cerr << response_block << std::endl;
 
-    data.getContent().parse();
-    data.getContent().get(CONTROL_RESPONSE).parse();
-    std::cerr << data.getContent() << std::endl; 
+    Block status_code_block = response_block.get(STATUS_CODE);
+    Block status_text_block = response_block.get(STATUS_TEXT);
+    short response_code = readNonNegativeIntegerAs<int>(status_code_block);
+    char response_text[1000] = {0};
+    memcpy(response_text, status_text_block.value(), status_text_block.value_size());
+      
+    if (response_code == OK) {
+
+      Block control_params = response_block.get(CONTROL_PARAMETERS);
+      control_params.parse();
+      
+      Block name_block = control_params.get(ndn::tlv::Name);
+      Name route_name(name_block);
+      Block face_id_block = control_params.get(FACE_ID);
+      int face_id = readNonNegativeIntegerAs<int>(face_id_block);
+      Block origin_block = control_params.get(ORIGIN);
+      int origin = readNonNegativeIntegerAs<int>(origin_block);
+      Block route_cost_block = control_params.get(COST);
+      int route_cost = readNonNegativeIntegerAs<int>(route_cost_block);
+      Block flags_block = control_params.get(FLAGS);
+      int flags = readNonNegativeIntegerAs<int>(flags_block);
+      
+      std::cout << "\nRegistration of route succeeded:" << std::endl;
+      std::cout << "Status text: " << response_text << std::endl;
+
+      std::cout << "Route name: " << route_name.toUri() << std::endl;
+      std::cout << "Face id: " << face_id << std::endl;
+      std::cout << "Origin: " << origin << std::endl;
+      std::cout << "Route cost: " << route_cost << std::endl;
+      std::cout << "Flags: " << flags << std::endl; 
+      
+    }
+    else {
+      std::cout << "\nRegistration of route failed." << std::endl;
+      std::cout << "Status text: " << response_text << std::endl;
+      
+    }
+
   }
-
 
   void onAddFaceDataReply(const Interest& interest, const Data& data) {
     short response_code;
@@ -284,9 +321,8 @@ int main(int argc, char *argv[]){
   g_pClient->m_namePrefix = Name("/test/01/02");
 
   try {
-    // g_pClient->run();
-    // g_pClient->addFace(string("udp4://127.0.1.1:6363"));
-    g_pClient->destroyFace(340); 
+    g_pClient->run();
+    //g_pClient->addFace(string("udp4://127.0.1.1:6363"));
     g_pClient->m_face.processEvents();
   }
   catch (const std::exception& e) {
