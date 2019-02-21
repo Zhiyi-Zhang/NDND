@@ -169,16 +169,54 @@ public:
 
 
   void onAddFaceDataReply(const Interest& interest, const Data& data) {
+    short response_code;
+    char response_text[1000] = {0};
+    char buf[1000]           = {0};   // For parsing
+    int face_id;                      // Store faceid for deletion of face
     Block response_block = data.getContent().blockFromValue();
     response_block.parse();
 
-    Block status_code_block = response_block.get(STATUS_CODE);
-    Block status_text_block = response_block.get(STATUS_TEXT);
-    short response_code = *(unsigned short *)status_code_block.value() & 0xff;
-    char response_text[1000] = {0};
+    Block status_code_block =       response_block.get(STATUS_CODE);
+    Block status_text_block =       response_block.get(STATUS_TEXT);
+    Block status_parameter_block =  response_block.get(CONTROL_PARAMETERS);
+    memcpy(buf, status_code_block.value(), status_code_block.value_size());
+    response_code = *(short *)buf;
     memcpy(response_text, status_text_block.value(), status_text_block.value_size());
 
-    std::cout << "\nAdding Face: " << response_code << " " << response_text << std::endl;
+    // Get FaceId for future removal of the face
+    status_parameter_block.parse();
+    Block face_id_block = status_parameter_block.get(FACE_ID);
+    memset(buf, 0, sizeof(buf));
+    memcpy(buf, face_id_block.value(), face_id_block.value_size());
+    face_id = ntohs(*(int *)buf);
+
+    std::cout << response_code << " " << response_text << ": Added Face (FaceId: " 
+              << face_id << ")" << std::endl;
+  }
+
+  void onDestroyFaceDataReply(const Interest& interest, const Data& data) {
+    short response_code;
+    char response_text[1000] = {0};
+    char buf[1000]           = {0};   // For parsing
+    int face_id;
+    Block response_block = data.getContent().blockFromValue();
+    response_block.parse();
+
+    Block status_code_block =       response_block.get(STATUS_CODE);
+    Block status_text_block =       response_block.get(STATUS_TEXT);
+    Block status_parameter_block =  response_block.get(CONTROL_PARAMETERS);
+    memcpy(buf, status_code_block.value(), status_code_block.value_size());
+    response_code = *(short *)buf;
+    memcpy(response_text, status_text_block.value(), status_text_block.value_size());
+
+    status_parameter_block.parse();
+    Block face_id_block = status_parameter_block.get(FACE_ID);
+    memset(buf, 0, sizeof(buf));
+    memcpy(buf, face_id_block.value(), face_id_block.value_size());
+    face_id = ntohs(*(int *)buf);
+
+    std::cout << response_code << " " << response_text << ": Destroyed Face (FaceId: " 
+              << face_id << ")" << std::endl;
   }
 
   void addFace(string uri) {
@@ -188,9 +226,38 @@ public:
     control_block.encode();
     n.append(control_block);
     Interest interest(n);
+
+    uint64_t now = std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::system_clock::now().time_since_epoch()).count();
+    const_cast<Name&>(interest.getName()).appendNumber(now);
+    const_cast<Name&>(interest.getName()).appendNumber(now);
+    
+    m_keyChain.sign(interest);
+
     m_face.expressInterest(
       interest, 
       bind(&NDNDClient::onAddFaceDataReply, this, _1, _2),
+      bind(&NDNDClient::onNack, this, _1, _2),
+      bind(&NDNDClient::onTimeout, this, _1));
+  }
+
+  void destroyFace(int face_id) {
+    Name n("/localhost/nfd/faces/destroy");
+    auto control_block = makeEmptyBlock(CONTROL_PARAMETERS);
+    control_block.push_back(makeNonNegativeIntegerBlock(FACE_ID, face_id));
+    control_block.encode();
+    n.append(control_block);
+    Interest interest(n);
+
+    uint64_t now = std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::system_clock::now().time_since_epoch()).count();
+    const_cast<Name&>(interest.getName()).appendNumber(now);
+    const_cast<Name&>(interest.getName()).appendNumber(now + 1);
+    
+    m_keyChain.sign(interest);
+    cout << interest.getName().toUri() << endl;
+
+    m_face.expressInterest(
+      interest, 
+      bind(&NDNDClient::onDestroyFaceDataReply, this, _1, _2),
       bind(&NDNDClient::onNack, this, _1, _2),
       bind(&NDNDClient::onTimeout, this, _1));
   }
@@ -218,7 +285,8 @@ int main(int argc, char *argv[]){
 
   try {
     // g_pClient->run();
-    g_pClient->addFace(string("udp4://127.0.1.1:6363"));
+    // g_pClient->addFace(string("udp4://127.0.1.1:6363"));
+    g_pClient->destroyFace(340); 
     g_pClient->m_face.processEvents();
   }
   catch (const std::exception& e) {
