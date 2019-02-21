@@ -11,13 +11,42 @@ using namespace ndn;
 using namespace ndn::ndnd;
 using namespace std;
 
+
 class NDNDClient{
 public:
+  
+  void send_rib_register_interest(const Name& route_name, int face_id) {
+    Interest interest(Name("/localhost/nfd/rib/register"));
+    interest.setInterestLifetime(5_s);
+    interest.setMustBeFresh(true);
+    Block control_params = make_rib_register_interest_parameter(route_name, face_id);
+    const_cast<Name&>(interest.getName()).append(control_params);
+    interest.setParameters(m_buffer, m_len);
+    interest.setNonce(4);
+    interest.setCanBePrefix(false);
+
+    uint64_t now = std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::system_clock::now().time_since_epoch()).count();
+    const_cast<Name&>(interest.getName()).appendNumber(now);
+    const_cast<Name&>(interest.getName()).appendNumber(now);
+    
+    m_keyChain.sign(interest);
+    
+    std::cerr << "Name of interest sent:" << std::endl;
+    std::cerr << interest.getName().toUri() << std::endl;
+    
+    m_face.expressInterest(
+      interest, 
+      bind(&NDNDClient::onNFDCommandData, this,  _1, _2),
+      bind(&NDNDClient::onNack, this,  _1, _2),
+      bind(&NDNDClient::onTimeout, this,  _1));  
+  }
+
+  
   void run(){
     Interest interest(Name("/ndn/nd"));
     interest.setInterestLifetime(30_s);
     interest.setMustBeFresh(true);
-    makeParameter();
+    make_NDND_interest_parameter();
     interest.setParameters(m_buffer, m_len);
     interest.setNonce(4);
     interest.setCanBePrefix(false);
@@ -36,22 +65,7 @@ public:
     m_face.processEvents();
   }
 
-  void makeParameter(){
-    auto pParam = reinterpret_cast<PPARAMETER>(m_buffer);
-    m_len = sizeof(PARAMETER);
-
-    pParam->V4 = 1;
-    memcpy(pParam->IpAddr, &m_IP, sizeof(in_addr_t));
-    pParam->Port = m_port;
-    memcpy(pParam->SubnetMask, &m_submask, sizeof(in_addr_t));
-    pParam->TTL = 30 * 1000; //ms
-    pParam->TimeStamp = chrono::duration_cast<chrono::milliseconds>(chrono::system_clock::now().time_since_epoch()).count();
-
-    Block block = m_namePrefix.wireEncode();
-    memcpy(pParam->NamePrefix, block.begin().base(), block.end() - block.begin());
-    m_len += block.end() - block.begin();
-  }
-
+// private:
   void onData(const Interest& interest, const Data& data){
     std::cout << data << std::endl;
 
@@ -86,6 +100,74 @@ public:
     std::cout << "Timeout " << interest << std::endl;
   }
 
+
+  Block make_rib_register_interest_parameter(const Name& route_name, int face_id) {
+    
+    std::cerr << "1" << std::endl;
+    auto block = makeEmptyBlock(CONTROL_PARAMETERS);
+    
+    Block route_name_block = route_name.wireEncode();    
+    
+    Block face_id_block =
+      makeNonNegativeIntegerBlock(FACE_ID, face_id);
+
+    Block origin_block =
+      makeNonNegativeIntegerBlock(ORIGIN, 0xFF);
+
+    Block cost_block =
+      makeNonNegativeIntegerBlock(COST, 0);
+
+    Block flags_block =
+      makeNonNegativeIntegerBlock(FLAGS, 0x01);
+    
+    std::cerr << "2" << std::endl;
+    
+    block.push_back(route_name_block);
+    block.push_back(face_id_block);
+    block.push_back(origin_block);
+    block.push_back(cost_block);
+    block.push_back(flags_block);
+    
+    std::cerr << "Route name block:" << std::endl;
+    std::cerr << route_name_block << std::endl;
+    std::cerr << "Face id block:" << std::endl;
+    std::cerr << face_id_block << std::endl;
+    
+    std::cerr << "Control parameters block:" << std::endl;
+    std::cerr << block << std::endl;
+    
+    block.encode();  
+    // memcpy(m_buffer, block.begin().base(), block.size());
+    // m_len = block.size();
+
+    return block;    
+  }
+  
+  void make_NDND_interest_parameter(){
+    auto pParam = reinterpret_cast<PPARAMETER>(m_buffer);
+    m_len = sizeof(PARAMETER);
+
+    pParam->V4 = 1;
+    memcpy(pParam->IpAddr, &m_IP, sizeof(in_addr_t));
+    pParam->Port = m_port;
+    memcpy(pParam->SubnetMask, &m_submask, sizeof(in_addr_t));
+    pParam->TTL = 30 * 1000; //ms
+    pParam->TimeStamp = chrono::duration_cast<chrono::milliseconds>(chrono::system_clock::now().time_since_epoch()).count();
+
+    Block block = m_namePrefix.wireEncode();
+    memcpy(pParam->NamePrefix, block.begin().base(), block.end() - block.begin());
+    m_len += block.end() - block.begin();
+  }
+
+  void onNFDCommandData(const Interest& interest, const Data& data){
+    std::cout << "onNFDCommandData got called." << std::endl;
+
+    data.getContent().parse();
+    data.getContent().get(CONTROL_RESPONSE).parse();
+    std::cerr << data.getContent() << std::endl; 
+  }
+
+
   void onAddFaceDataReply(const Interest& interest, const Data& data) {
     Block response_block = data.getContent().blockFromValue();
     response_block.parse();
@@ -115,6 +197,7 @@ public:
 
 public:
   Face m_face;
+  KeyChain m_keyChain;
   Name m_namePrefix;
   in_addr m_IP;
   in_addr m_submask;
