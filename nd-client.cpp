@@ -8,6 +8,7 @@
 #include "nd-packet-format.h"
 #include "nfd-command-tlv.h"
 #include <ndn-cxx/encoding/tlv.hpp>
+#include <sstream>
 using namespace ndn;
 using namespace ndn::ndnd;
 using namespace std;
@@ -89,10 +90,13 @@ public:
 
       pResult = reinterpret_cast<const RESULT*>(((uint8_t*)pResult) + m_len);
       iNo ++;
-    }
 
-    Name name_test("test");
-    send_rib_register_interest(name_test, 259);
+      std::stringstream ss;
+      ss << inet_ntoa(*(in_addr*)(pResult->IpAddr)) << ':' << ntohs(pResult->Port);
+
+      m_uri_to_prefix[ss.str()] = name.toUri();
+
+    }
   }
 
   void onNack(const Interest& interest, const lp::Nack& nack){
@@ -216,19 +220,34 @@ public:
     Block status_code_block =       response_block.get(STATUS_CODE);
     Block status_text_block =       response_block.get(STATUS_TEXT);
     Block status_parameter_block =  response_block.get(CONTROL_PARAMETERS);
-    memcpy(buf, status_code_block.value(), status_code_block.value_size());
-    response_code = *(short *)buf;
+    response_code = readNonNegativeIntegerAs<int>(status_code_block);
     memcpy(response_text, status_text_block.value(), status_text_block.value_size());
 
     // Get FaceId for future removal of the face
     status_parameter_block.parse();
     Block face_id_block = status_parameter_block.get(FACE_ID);
-    memset(buf, 0, sizeof(buf));
-    memcpy(buf, face_id_block.value(), face_id_block.value_size());
-    face_id = ntohs(*(int *)buf);
-
+    face_id = readNonNegativeIntegerAs<int>(face_id_block);
     std::cout << response_code << " " << response_text << ": Added Face (FaceId: " 
               << face_id << "): " << uri << std::endl;
+
+    if (response_code == OK) {
+
+      auto it = m_uri_to_prefix.find(uri);
+      if (it != m_uri_to_prefix.end()) {
+        send_rib_register_interest(it->second, face_id);
+      }
+      else {
+	std::cerr << "Failed to find prefix for uri " << uri << std::endl;
+      }
+      
+    }
+    else {
+      std::cout << "\nCreation of face failed." << std::endl;
+      std::cout << "Status text: " << response_text << std::endl;
+      
+    }
+
+    
   }
 
   void onDestroyFaceDataReply(const Interest& interest, const Data& data) {
@@ -308,6 +327,7 @@ public:
   uint16_t m_port;
   uint8_t m_buffer[4096];
   size_t m_len;
+  std::map<std::string, std::string> m_uri_to_prefix;
 };
 NDNDClient *g_pClient;
 
@@ -321,8 +341,8 @@ int main(int argc, char *argv[]){
   g_pClient->m_namePrefix = Name("/test/01/02");
 
   try {
-    // g_pClient->run();
-    g_pClient->addFace(string("udp4://127.0.1.1:6363"));
+    g_pClient->run();
+    // g_pClient->addFace(string("udp4://127.0.1.1:6363"));
     g_pClient->m_face.processEvents();
   }
   catch (const std::exception& e) {
