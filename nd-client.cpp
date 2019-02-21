@@ -31,12 +31,6 @@ public:
 
 class NDNDClient{
 public:
-
-  // NDNDClient() 
-  //   : //m_face(m_io_service),
-  //     // m_scheduler(m_io_service)
-  // {
-  // }
   
   void send_rib_register_interest(const Name& route_name, int face_id) {
     Interest interest(Name("/localhost/nfd/rib/register"));
@@ -353,34 +347,7 @@ public:
   size_t m_len;
   std::map<std::string, std::string> m_uri_to_prefix;
 };
-NDNDClient *g_pClient;
 
-// int main(int argc, char *argv[]){
-//   g_pClient = new NDNDClient();
-
-//   inet_aton(argv[1], &g_pClient->m_IP);
-//   sscanf(argv[2], "%hu", &g_pClient->m_port);
-//   g_pClient->m_port = htons(g_pClient->m_port);
-//   inet_aton("255.255.255.0", &g_pClient->m_submask);
-//   g_pClient->m_namePrefix = Name("/test/01/02");
-
-//   boost::asio::io_service io_service_;
-//   Scheduler scheduler_(io_service_);
-
-//   try {
-//     // g_pClient->run();
-//     // g_pClient->addFace(string("udp4://127.0.1.1:6363"));
-//     g_pClient->m_io_service.run();
-//     g_pClient->loop();
-//     // g_pClient->m_face.processEvents();
-//   }
-//   catch (const std::exception& e) {
-//     std::cerr << "ERROR: " << e.what() << std::endl;
-//   }
-
-//   delete g_pClient;
-//   return 0;
-// }
 
 class Program
 {
