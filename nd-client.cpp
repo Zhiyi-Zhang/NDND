@@ -12,11 +12,33 @@ using namespace std;
 
 class NDNDClient{
 public:
+  
+  void send_rib_register_interest(const Name& route_name, int face_id) {
+    Interest interest(Name("/localhost/nfd/rib/register"));
+    interest.setInterestLifetime(5_s);
+    interest.setMustBeFresh(true);
+    interest.setParameters(m_buffer, m_len);
+    interest.setNonce(4);
+    interest.setCanBePrefix(false);
+
+    name::Component parameterDigest = name::Component::fromParametersSha256Digest(
+      util::Sha256::computeDigest(interest.getParameters().wire(), interest.getParameters().size()));
+
+    const_cast<Name&>(interest.getName()).append(parameterDigest);
+
+    m_face.expressInterest(
+      interest, 
+      bind(&NDNDClient::onNFDCommandData, this,  _1, _2),
+      bind(&NDNDClient::onNFDCommandNack, this,  _1, _2),
+      bind(&NDNDClient::onNFDCommandTimeout, this,  _1));  
+  }
+
+  
   void run(){
     Interest interest(Name("/ndn/nd"));
     interest.setInterestLifetime(30_s);
     interest.setMustBeFresh(true);
-    makeParameter();
+    make_NDND_interest_parameter();
     interest.setParameters(m_buffer, m_len);
     interest.setNonce(4);
     interest.setCanBePrefix(false);
@@ -35,7 +57,7 @@ public:
     m_face.processEvents();
   }
 
-  void makeParameter(){
+  void make_NDND_interest_parameter(){
     auto pParam = reinterpret_cast<PPARAMETER>(m_buffer);
     m_len = sizeof(PARAMETER);
 
@@ -51,6 +73,13 @@ public:
     m_len += block.end() - block.begin();
   }
 
+  void make_rib_register_interest_parameter(const Name& route_name, int face_id) {
+
+    
+    
+  }
+
+  
   void onData(const Interest& interest, const Data& data){
     std::cout << data << std::endl;
 
@@ -74,6 +103,8 @@ public:
       pResult = reinterpret_cast<const RESULT*>(((uint8_t*)pResult) + m_len);
       iNo ++;
     }
+
+    send_interest();
   }
 
   void onNack(const Interest& interest, const lp::Nack& nack){
@@ -85,6 +116,19 @@ public:
     std::cout << "Timeout " << interest << std::endl;
   }
 
+  void onNFDCommandData(const Interest& interest, const Data& data){
+    std::cout << "onNFDCommandData got called." << std::endl;
+  }
+
+  void onNFDCommandNack(const Interest& interest, const lp::Nack& nack){
+    std::cout << "onNFDCommandNack got called." << std::endl;
+  }
+
+  void onNFDCommandTimeout(const Interest& interest){
+    std::cout << "onNFDCommandTimeout got called." << std::endl;
+  }
+
+  
 public:
   Face m_face;
   Name m_namePrefix;
@@ -96,22 +140,30 @@ public:
 };
 NDNDClient *g_pClient;
 
-// int main(int argc, char *argv[]){
-//   g_pClient = new NDNDClient();
+int main(int argc, char *argv[]){
 
-//   inet_aton(argv[1], &g_pClient->m_IP);
-//   sscanf(argv[2], "%hu", &g_pClient->m_port);
-//   g_pClient->m_port = htons(g_pClient->m_port);
-//   inet_aton("255.255.255.0", &g_pClient->m_submask);
-//   g_pClient->m_namePrefix = Name("/test/01/02");
+  std::cerr << "1" << std::endl;
+  
+  g_pClient = new NDNDClient();
 
-//   try {
-//     g_pClient->run();
-//   }
-//   catch (const std::exception& e) {
-//     std::cerr << "ERROR: " << e.what() << std::endl;
-//   }
+  inet_aton(argv[1], &g_pClient->m_IP);
+  sscanf(argv[2], "%hu", &g_pClient->m_port);
+  g_pClient->m_port = htons(g_pClient->m_port);
+  inet_aton("255.255.255.0", &g_pClient->m_submask);
+  g_pClient->m_namePrefix = Name("/test/01/02");
 
-//   delete g_pClient;
-//   return 0;
-// }
+  std::cerr << "2" << std::endl;
+  
+  try {
+    g_pClient->run();
+  }
+  catch (const std::exception& e) {
+    std::cerr << "ERROR: " << e.what() << std::endl;
+  }
+
+  delete g_pClient;
+
+  std::cerr << "3" << std::endl;
+  
+  return 0;
+}
