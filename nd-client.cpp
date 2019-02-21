@@ -30,7 +30,7 @@ public:
     const_cast<Name&>(interest.getName()).appendNumber(now);
     const_cast<Name&>(interest.getName()).appendNumber(now);
     
-    //m_keyChain.sign(interest);
+    m_keyChain.sign(interest);
     
     std::cerr << "Name of interest sent:" << std::endl;
     std::cerr << interest.getName().toUri() << std::endl;
