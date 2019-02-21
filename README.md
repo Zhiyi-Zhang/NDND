@@ -93,11 +93,7 @@ Server side:
 ```
 Client side:
 ```
-./nd-client [IP] [Optional Port]
-```
-An client side example:
-```
-./nd-client 1.1.1.1 6363
+./nd-client
 ```
 
 
