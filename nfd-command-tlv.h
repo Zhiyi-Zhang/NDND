@@ -2,6 +2,10 @@
 #ifndef NFD_COMMAND_TLV_H
 #define NFD_COMMAND_TLV_H
 
+enum NFD_STATUS_CODE {
+  OK = 200,
+};
+
 enum NFD_COMMAND_TLV_TYPE {
   CONTROL_PARAMETERS = 0x68,
   FACE_ID = 0x69,
