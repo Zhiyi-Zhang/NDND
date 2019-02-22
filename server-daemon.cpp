@@ -4,6 +4,7 @@
 
 #include "server-daemon.hpp"
 #include "nd-packet-format.h"
+#include <chrono>
 #include <iostream>
 
 namespace ndn {
@@ -20,7 +21,6 @@ parseInterest(const Interest& interest, DBEntry& entry)
   for (int i = 0; i < paramBlock.value_size(); i++) {
     printf("%02x", paramBlock.value()[i]);
   }
-    // std::cout << std::hex << paramBlock.value()[i];
 
   Name prefix;
   Block nameBlock(paramBlock.value() + sizeof(struct PARAMETER),
@@ -37,43 +37,6 @@ parseInterest(const Interest& interest, DBEntry& entry)
 
   std::cout << "finish parse" << std::endl
             << prefix.toUri() << std::endl;
-}
-
-static void
-genReplyBuffer(const std::list<DBEntry>& db, const uint8_t (&ipMatch)[16], Buffer& resultBuf)
-{
-  resultBuf.clear();
-  int counter = 0;
-  for (const auto& item : db) {
-    uint8_t itemIpPrefix[16] = {0};
-    for (int i = 0; i < 16; i++) {
-      itemIpPrefix[i] = item.ip[i] & item.mask[i];
-      std::cout << itemIpPrefix[i] << std::endl;
-    }
-    if (memcmp(ipMatch, itemIpPrefix, 16) == 0) {
-      // TODO: Freshness Check: TP + TTL compared with Current TP
-
-      struct RESULT result;
-      result.V4 = item.v4? 1 : 0;
-      memcpy(result.IpAddr, item.ip, 16);
-      result.Port = item.port;
-      memcpy(result.SubnetMask, item.mask, 16);
-
-      for (int i = 0; i < sizeof(struct RESULT); i++) {
-        resultBuf.push_back(*((uint8_t*)&result + i));
-      }
-
-
-      auto block = item.prefix.wireEncode();
-      for (int i =0; i < block.size(); i++) {
-        resultBuf.push_back(*(block.wire() + i));
-      }
-      counter++;
-    }
-    if (counter > 10)
-      break;
-  }
-  std::cout << "matched entries number" << counter << std::endl;
 }
 
 void
@@ -95,19 +58,69 @@ NDServer::onInterest(const Interest& request)
 {
   DBEntry entry;
   parseInterest(request, entry);
-  m_db.push_back(entry);
   uint8_t ipMatch[16] = {0};
   for (int i = 0; i < 16; i++) {
     ipMatch[i] = entry.ip[i] & entry.mask[i];
   }
 
-  std::cout << "are you okay"<< std::endl;
+  Buffer contentBuf;
+  bool isUpdate = false;
+  int counter = 0;
+  for (auto it = m_db.begin(); it != m_db.end();) {
+    const auto& item = *it;
+    // if there is an existing entry for the same client, update it
+    if (memcmp(entry.ip, item.ip, 16) == 0 && memcmp(entry.mask, item.mask, 16) == 0) {
+      isUpdate = true;
+      *it = entry;
+      it++;
+      continue;
+    }
+
+    using namespace std::chrono;
+    milliseconds ms = duration_cast<milliseconds>(system_clock::now().time_since_epoch());
+    if (item.tp + item.ttl < ms.count()) {
+      // if the entry is out-of-date, erase it
+      m_db.erase(it);
+    }
+    else {
+      // else, check the masked IP address, add the entry to the reply if it matches
+      uint8_t itemIpPrefix[16] = {0};
+      for (int i = 0; i < 16; i++) {
+        itemIpPrefix[i] = item.ip[i] & item.mask[i];
+        std::cout << itemIpPrefix[i] << std::endl;
+      }
+      if (memcmp(ipMatch, itemIpPrefix, 16) == 0) {
+        struct RESULT result;
+        result.V4 = item.v4? 1 : 0;
+        memcpy(result.IpAddr, item.ip, 16);
+        result.Port = item.port;
+        memcpy(result.SubnetMask, item.mask, 16);
+
+        for (int i = 0; i < sizeof(struct RESULT); i++) {
+          contentBuf.push_back(*((uint8_t*)&result + i));
+        }
+        auto block = item.prefix.wireEncode();
+        for (int i =0; i < block.size(); i++) {
+          contentBuf.push_back(*(block.wire() + i));
+        }
+        counter++;
+        it++;
+      }
+      if (counter > 10)
+        break;
+    }
+  }
+  if (!isUpdate) {
+    m_db.push_back(entry);
+  }
 
   auto data = make_shared<Data>(request.getName());
-  Buffer contentBuf;
-  genReplyBuffer(m_db, ipMatch, contentBuf);
-  std::cout << "hello"<< std::endl;
-  data->setContent(contentBuf.get<uint8_t>(), contentBuf.size());
+  if (contentBuf.size() > 0) {
+    data->setContent(contentBuf.get<uint8_t>(), contentBuf.size());
+  }
+  else {
+    return;
+  }
 
   m_keyChain.sign(*data, security::SigningInfo(security::SigningInfo::SIGNER_TYPE_SHA256));
   // security::SigningInfo signInfo(security::SigningInfo::SIGNER_TYPE_ID, m_options.identity);
@@ -116,5 +129,5 @@ NDServer::onInterest(const Interest& request)
   m_face.put(*data);
 }
 
-}
-}
+} // namespace ndnd
+} // namespace ndn
