@@ -46,7 +46,7 @@ public:
     interest.setMustBeFresh(true);
     Block control_params = make_rib_register_interest_parameter(route_name, face_id);
     const_cast<Name&>(interest.getName()).append(control_params);
-    interest.setParameters(m_buffer, m_len);
+    interest.setApplicationParameters(m_buffer, m_len);
     interest.setNonce(4);
     interest.setCanBePrefix(false);
 
@@ -72,12 +72,12 @@ public:
     interest.setInterestLifetime(30_s);
     interest.setMustBeFresh(true);
     make_NDND_interest_parameter();
-    interest.setParameters(m_buffer, m_len);
+    interest.setApplicationParameters(m_buffer, m_len);
     interest.setNonce(4);
     interest.setCanBePrefix(false);
 
     name::Component parameterDigest = name::Component::fromParametersSha256Digest(
-      util::Sha256::computeDigest(interest.getParameters().wire(), interest.getParameters().size()));
+      util::Sha256::computeDigest(interest.getApplicationParameters().wire(), interest.getApplicationParameters().size()));
 
     const_cast<Name&>(interest.getName()).append(parameterDigest);
 
@@ -406,7 +406,7 @@ public:
 
   void loop() {
     m_client->sendNDNDInterest();
-    m_scheduler->scheduleEvent(time::seconds(1), [this] {
+    m_scheduler->schedule(time::seconds(1), [this] {
       loop();
     });
   }

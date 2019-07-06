@@ -13,7 +13,7 @@ namespace ndnd {
 static void
 parseInterest(const Interest& interest, DBEntry& entry)
 {
-  auto paramBlock = interest.getParameters();
+  auto paramBlock = interest.getApplicationParameters();
 
   struct PARAMETER param;
   memcpy(&param, paramBlock.value(), sizeof(struct PARAMETER));
