@@ -7,12 +7,15 @@
 #include <iostream>
 #include <chrono>
 #include <ndn-cxx/util/sha256.hpp>
-#include "nd-packet-format.h"
-#include "nfd-command-tlv.h"
 #include <ndn-cxx/encoding/tlv.hpp>
 #include <ndn-cxx/util/scheduler.hpp>
 #include <boost/asio.hpp>
 #include <sstream>
+
+#include "nd-packet-format.h"
+#include "nfd-command-tlv.h"
+#include "nfdc-helpers.h"
+
 using namespace ndn;
 using namespace ndn::ndnd;
 using namespace std;
@@ -41,24 +44,7 @@ public:
   }
 
   void send_rib_register_interest(const Name& route_name, int face_id) {
-    Interest interest(Name("/localhost/nfd/rib/register"));
-    interest.setInterestLifetime(5_s);
-    interest.setMustBeFresh(true);
-    Block control_params = make_rib_register_interest_parameter(route_name, face_id);
-    const_cast<Name&>(interest.getName()).append(control_params);
-    interest.setApplicationParameters(m_buffer, m_len);
-    interest.setNonce(4);
-    interest.setCanBePrefix(false);
-
-    uint64_t now = std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::system_clock::now().time_since_epoch()).count();
-    const_cast<Name&>(interest.getName()).appendNumber(now);
-    const_cast<Name&>(interest.getName()).appendNumber(now);
-
-    m_keyChain.sign(interest);
-
-    std::cerr << "Name of interest sent:" << std::endl;
-    std::cerr << interest.getName().toUri() << std::endl;
-
+    Interest interest = prepareRibRegisterInterest(route_name, face_id, m_keyChain);
     m_face.expressInterest(
       interest,
       bind(&NDNDClient::onRegisterRouteDataReply, this,  _1, _2),
@@ -129,45 +115,6 @@ public:
     std::cout << "Timeout " << interest << std::endl;
   }
 
-
-  Block make_rib_register_interest_parameter(const Name& route_name, int face_id) {
-
-    auto block = makeEmptyBlock(CONTROL_PARAMETERS);
-
-    Block route_name_block = route_name.wireEncode();
-
-    Block face_id_block =
-      makeNonNegativeIntegerBlock(FACE_ID, face_id);
-
-    Block origin_block =
-      makeNonNegativeIntegerBlock(ORIGIN, 0xFF);
-
-    Block cost_block =
-      makeNonNegativeIntegerBlock(COST, 0);
-
-    Block flags_block =
-      makeNonNegativeIntegerBlock(FLAGS, 0x01);
-
-    block.push_back(route_name_block);
-    block.push_back(face_id_block);
-    block.push_back(origin_block);
-    block.push_back(cost_block);
-    block.push_back(flags_block);
-
-    std::cerr << "Route name block:" << std::endl;
-    std::cerr << route_name_block << std::endl;
-    std::cerr << "Face id block:" << std::endl;
-    std::cerr << face_id_block << std::endl;
-
-    std::cerr << "Control parameters block:" << std::endl;
-    std::cerr << block << std::endl;
-
-    block.encode();
-
-    return block;
-
-  }
-
   void make_NDND_interest_parameter(){
     auto pParam = reinterpret_cast<PPARAMETER>(m_buffer);
     m_len = sizeof(PARAMETER);
@@ -188,7 +135,7 @@ public:
     Block response_block = data.getContent().blockFromValue();
     response_block.parse();
 
-    std::cerr << response_block << std::endl;
+    std::cout << response_block << std::endl;
 
     Block status_code_block = response_block.get(STATUS_CODE);
     Block status_text_block = response_block.get(STATUS_TEXT);
@@ -238,8 +185,8 @@ public:
     Block response_block = data.getContent().blockFromValue();
     response_block.parse();
 
-    Block status_code_block =       response_block.get(STATUS_CODE);
-    Block status_text_block =       response_block.get(STATUS_TEXT);
+    Block status_code_block = response_block.get(STATUS_CODE);
+    Block status_text_block = response_block.get(STATUS_TEXT);
     response_code = readNonNegativeIntegerAs<int>(status_code_block);
     memcpy(response_text, status_text_block.value(), status_text_block.value_size());
 
@@ -264,10 +211,7 @@ public:
     else {
       std::cout << "\nCreation of face failed." << std::endl;
       std::cout << "Status text: " << response_text << std::endl;
-
     }
-
-
   }
 
   void onDestroyFaceDataReply(const Interest& interest, const Data& data) {
@@ -296,20 +240,7 @@ public:
   }
 
   void addFace(string uri) {
-    Name n("/localhost/nfd/faces/create");
-    auto control_block = makeEmptyBlock(CONTROL_PARAMETERS);
-    control_block.push_back(makeStringBlock(URI, uri));
-    control_block.encode();
-    n.append(control_block);
-    Interest interest(n);
-
-    uint64_t now = std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::system_clock::now().time_since_epoch()).count();
-    const_cast<Name&>(interest.getName()).appendNumber(now);
-    const_cast<Name&>(interest.getName()).appendNumber(now);
-
-    m_keyChain.sign(interest);
-    cout << interest.getName().toUri() << endl;
-
+    Interest interest = prepareFaceCreationInterest(uri, m_keyChain);
     m_face.expressInterest(
       interest,
       bind(&NDNDClient::onAddFaceDataReply, this, _1, _2, uri),
@@ -318,27 +249,13 @@ public:
   }
 
   void destroyFace(int face_id) {
-    Name n("/localhost/nfd/faces/destroy");
-    auto control_block = makeEmptyBlock(CONTROL_PARAMETERS);
-    control_block.push_back(makeNonNegativeIntegerBlock(FACE_ID, face_id));
-    control_block.encode();
-    n.append(control_block);
-    Interest interest(n);
-
-    uint64_t now = std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::system_clock::now().time_since_epoch()).count();
-    const_cast<Name&>(interest.getName()).appendNumber(now);
-    const_cast<Name&>(interest.getName()).appendNumber(now + 1);
-
-    m_keyChain.sign(interest);
-    cout << interest.getName().toUri() << endl;
-
+    Interest interest = prepareFaceDestroyInterest(face_id, m_keyChain);
     m_face.expressInterest(
       interest,
       bind(&NDNDClient::onDestroyFaceDataReply, this, _1, _2),
       bind(&NDNDClient::onNack, this, _1, _2),
       bind(&NDNDClient::onTimeout, this, _1));
   }
-
 
   void setIP() {
     struct ifaddrs *ifaddr, *ifa;

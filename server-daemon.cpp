@@ -150,7 +150,7 @@ NDServer::onInterest(const Interest& request)
 void
 NDServer::addRoute(const std::string& url, DBEntry& entry)
 {
-  auto Interest = parepareFaceCreationInterest(url, m_keyChain);
+  auto Interest = prepareFaceCreationInterest(url, m_keyChain);
   m_face.expressInterest(Interest,
                          std::bind(&NDServer::onData, this, _2, entry),
                          nullptr,

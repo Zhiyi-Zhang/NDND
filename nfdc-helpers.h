@@ -52,7 +52,7 @@ prepareRibRegisterInterest(const Name& route_name, int face_id, KeyChain& keycha
 }
 
 static Interest
-parepareFaceCreationInterest(const std::string& uri, KeyChain& keychain)
+prepareFaceCreationInterest(const std::string& uri, KeyChain& keychain)
 {
   Name name("/localhost/nfd/faces/create");
   auto control_block = makeEmptyBlock(CONTROL_PARAMETERS);
