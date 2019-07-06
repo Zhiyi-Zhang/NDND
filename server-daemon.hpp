@@ -18,6 +18,7 @@ public:
   uint32_t ttl;
   uint64_t tp;
   Name prefix;
+  int faceId;
 };
 
 class NDServer
@@ -32,6 +33,12 @@ public:
 private:
   void
   onInterest(const Interest& request);
+
+  void
+  addRoute(const std::string& url, DBEntry& entry);
+
+  void
+  onData(const Data& data, DBEntry& entry);
 
 private:
   Name m_prefix;

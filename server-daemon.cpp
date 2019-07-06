@@ -3,12 +3,27 @@
 // License: LGPL v3.0
 
 #include "server-daemon.hpp"
+#include "nfdc-helpers.h"
 #include "nd-packet-format.h"
+#include <netinet/in.h>
+#include <arpa/inet.h>
+#include <netdb.h>
+#include <ifaddrs.h>
 #include <chrono>
 #include <iostream>
 
 namespace ndn {
 namespace ndnd {
+
+static std::string
+getFaceUri(const DBEntry& entry)
+{
+  std::string result = "udp4://";
+  result += inet_ntoa(*(in_addr*)(entry.ip));
+  result += ':';
+  result += std::to_string(entry.port);
+  return result;
+}
 
 static void
 parseInterest(const Interest& interest, DBEntry& entry)
@@ -34,6 +49,7 @@ parseInterest(const Interest& interest, DBEntry& entry)
   entry.ttl = param.TTL;
   entry.tp = param.TimeStamp;
   entry.prefix = prefix;
+  entry.faceId = -1;
 
   std::cout << "finish parse" << std::endl
             << prefix.toUri() << std::endl;
@@ -111,7 +127,9 @@ NDServer::onInterest(const Interest& request)
     }
   }
   if (!isUpdate) {
+    // create the entry for the requester if there is no matching entry in db
     m_db.push_back(entry);
+    addRoute(getFaceUri(entry), entry);
   }
 
   auto data = make_shared<Data>(request.getName());
@@ -127,6 +145,83 @@ NDServer::onInterest(const Interest& request)
   // m_keyChain.sign(*m_data, signInfo);
   data->setFreshnessPeriod(time::milliseconds(4000));
   m_face.put(*data);
+}
+
+void
+NDServer::addRoute(const std::string& url, DBEntry& entry)
+{
+  auto Interest = parepareFaceCreationInterest(url, m_keyChain);
+  m_face.expressInterest(Interest,
+                         std::bind(&NDServer::onData, this, _2, entry),
+                         nullptr,
+                         nullptr);
+}
+
+void
+NDServer::onData(const Data& data, DBEntry& entry)
+{
+  Name ribRegisterPrefix("/localhost/nfd/rib/register");
+  Name faceCreationPrefix("/localhost/nfd/faces/create");
+  Name faceDestroyPrefix("/localhost/nfd/faces/destroy");
+  if (ribRegisterPrefix.isPrefixOf(data.getName())) {
+    Block response_block = data.getContent().blockFromValue();
+    response_block.parse();
+    int responseCode = readNonNegativeIntegerAs<int>(response_block.get(STATUS_CODE));
+    std::string responseTxt = readString(response_block.get(STATUS_TEXT));
+
+    // Get FaceId for future removal of the face
+    if (responseCode == OK) {
+      Block controlParam = response_block.get(CONTROL_PARAMETERS);
+      controlParam.parse();
+
+      Name route_name(controlParam.get(ndn::tlv::Name));
+      int face_id = readNonNegativeIntegerAs<int>(controlParam.get(FACE_ID));
+      int origin = readNonNegativeIntegerAs<int>(controlParam.get(ORIGIN));
+      int route_cost = readNonNegativeIntegerAs<int>(controlParam.get(COST));
+      int flags = readNonNegativeIntegerAs<int>(controlParam.get(FLAGS));
+
+      std::cout << "\nRegistration of route succeeded:" << std::endl;
+      std::cout << "Status text: " << responseTxt << std::endl;
+      std::cout << "Route name: " << route_name.toUri() << std::endl;
+      std::cout << "Face id: " << face_id << std::endl;
+      std::cout << "Origin: " << origin << std::endl;
+      std::cout << "Route cost: " << route_cost << std::endl;
+      std::cout << "Flags: " << flags << std::endl;
+    }
+    else {
+      std::cout << "\nRegistration of route failed." << std::endl;
+      std::cout << "Status text: " << responseTxt << std::endl;
+    }
+  }
+  else if (faceCreationPrefix.isPrefixOf(data.getName())) {
+    Block response_block = data.getContent().blockFromValue();
+    response_block.parse();
+    int responseCode = readNonNegativeIntegerAs<int>(response_block.get(STATUS_CODE));
+    std::string responseTxt = readString(response_block.get(STATUS_TEXT));
+
+    // Get FaceId for future removal of the face
+    if (responseCode == OK) {
+      Block status_parameter_block = response_block.get(CONTROL_PARAMETERS);
+      status_parameter_block.parse();
+      int face_id = readNonNegativeIntegerAs<int>(status_parameter_block.get(FACE_ID));
+      std::cout << responseCode << " " << responseTxt
+                << ": Added Face (FaceId: " << face_id
+                << std::endl;
+
+      entry.faceId = face_id;
+      auto Interest = prepareRibRegisterInterest(entry.prefix, face_id, m_keyChain);
+      m_face.expressInterest(Interest,
+                             std::bind(&NDServer::onData, this, _2, entry),
+                             nullptr, nullptr);
+    }
+    else {
+      std::cout << "\nCreation of face failed." << std::endl;
+      std::cout << "Status text: " << responseTxt << std::endl;
+    }
+  }
+  else if (faceDestroyPrefix.isPrefixOf(data.getName())) {
+
+  }
 }
 
 } // namespace ndnd

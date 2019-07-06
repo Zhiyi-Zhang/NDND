@@ -1,4 +1,3 @@
-
 #ifndef NFD_COMMAND_TLV_H
 #define NFD_COMMAND_TLV_H
 

@@ -39,7 +39,7 @@ public:
     setIP();
     m_port = htons(6363); // default
   }
-  
+
   void send_rib_register_interest(const Name& route_name, int face_id) {
     Interest interest(Name("/localhost/nfd/rib/register"));
     interest.setInterestLifetime(5_s);
@@ -53,20 +53,20 @@ public:
     uint64_t now = std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::system_clock::now().time_since_epoch()).count();
     const_cast<Name&>(interest.getName()).appendNumber(now);
     const_cast<Name&>(interest.getName()).appendNumber(now);
-    
+
     m_keyChain.sign(interest);
-    
+
     std::cerr << "Name of interest sent:" << std::endl;
     std::cerr << interest.getName().toUri() << std::endl;
-    
+
     m_face.expressInterest(
-      interest, 
+      interest,
       bind(&NDNDClient::onRegisterRouteDataReply, this,  _1, _2),
       bind(&NDNDClient::onNack, this,  _1, _2),
-      bind(&NDNDClient::onTimeout, this,  _1));  
+      bind(&NDNDClient::onTimeout, this,  _1));
   }
 
-  
+
   void sendNDNDInterest(){
     Interest interest(Name("/ndn/nd"));
     interest.setInterestLifetime(30_s);
@@ -82,7 +82,7 @@ public:
     const_cast<Name&>(interest.getName()).append(parameterDigest);
 
     m_face.expressInterest(
-      interest, 
+      interest,
       bind(&NDNDClient::onData, this,  _1, _2),
       bind(&NDNDClient::onNack, this,  _1, _2),
       bind(&NDNDClient::onTimeout, this,  _1));
@@ -131,11 +131,11 @@ public:
 
 
   Block make_rib_register_interest_parameter(const Name& route_name, int face_id) {
-    
+
     auto block = makeEmptyBlock(CONTROL_PARAMETERS);
-    
-    Block route_name_block = route_name.wireEncode();    
-    
+
+    Block route_name_block = route_name.wireEncode();
+
     Block face_id_block =
       makeNonNegativeIntegerBlock(FACE_ID, face_id);
 
@@ -147,27 +147,27 @@ public:
 
     Block flags_block =
       makeNonNegativeIntegerBlock(FLAGS, 0x01);
-    
+
     block.push_back(route_name_block);
     block.push_back(face_id_block);
     block.push_back(origin_block);
     block.push_back(cost_block);
     block.push_back(flags_block);
-    
+
     std::cerr << "Route name block:" << std::endl;
     std::cerr << route_name_block << std::endl;
     std::cerr << "Face id block:" << std::endl;
     std::cerr << face_id_block << std::endl;
-    
+
     std::cerr << "Control parameters block:" << std::endl;
     std::cerr << block << std::endl;
-    
-    block.encode();  
+
+    block.encode();
 
     return block;
-    
+
   }
-  
+
   void make_NDND_interest_parameter(){
     auto pParam = reinterpret_cast<PPARAMETER>(m_buffer);
     m_len = sizeof(PARAMETER);
@@ -187,7 +187,7 @@ public:
   void onRegisterRouteDataReply(const Interest& interest, const Data& data){
     Block response_block = data.getContent().blockFromValue();
     response_block.parse();
-    
+
     std::cerr << response_block << std::endl;
 
     Block status_code_block = response_block.get(STATUS_CODE);
@@ -195,12 +195,12 @@ public:
     short response_code = readNonNegativeIntegerAs<int>(status_code_block);
     char response_text[1000] = {0};
     memcpy(response_text, status_text_block.value(), status_text_block.value_size());
-      
+
     if (response_code == OK) {
 
       Block control_params = response_block.get(CONTROL_PARAMETERS);
       control_params.parse();
-      
+
       Block name_block = control_params.get(ndn::tlv::Name);
       Name route_name(name_block);
       Block face_id_block = control_params.get(FACE_ID);
@@ -211,7 +211,7 @@ public:
       int route_cost = readNonNegativeIntegerAs<int>(route_cost_block);
       Block flags_block = control_params.get(FLAGS);
       int flags = readNonNegativeIntegerAs<int>(flags_block);
-      
+
       std::cout << "\nRegistration of route succeeded:" << std::endl;
       std::cout << "Status text: " << response_text << std::endl;
 
@@ -219,13 +219,13 @@ public:
       std::cout << "Face id: " << face_id << std::endl;
       std::cout << "Origin: " << origin << std::endl;
       std::cout << "Route cost: " << route_cost << std::endl;
-      std::cout << "Flags: " << flags << std::endl; 
-      
+      std::cout << "Flags: " << flags << std::endl;
+
     }
     else {
       std::cout << "\nRegistration of route failed." << std::endl;
       std::cout << "Status text: " << response_text << std::endl;
-      
+
     }
 
   }
@@ -249,7 +249,7 @@ public:
       status_parameter_block.parse();
       Block face_id_block = status_parameter_block.get(FACE_ID);
       face_id = readNonNegativeIntegerAs<int>(face_id_block);
-      std::cout << response_code << " " << response_text << ": Added Face (FaceId: " 
+      std::cout << response_code << " " << response_text << ": Added Face (FaceId: "
                 << face_id << "): " << uri << std::endl;
 
       auto it = m_uri_to_prefix.find(uri);
@@ -259,15 +259,15 @@ public:
       else {
 	      std::cerr << "Failed to find prefix  for uri " << uri << std::endl;
       }
-      
+
     }
     else {
       std::cout << "\nCreation of face failed." << std::endl;
       std::cout << "Status text: " << response_text << std::endl;
-      
+
     }
 
-    
+
   }
 
   void onDestroyFaceDataReply(const Interest& interest, const Data& data) {
@@ -291,7 +291,7 @@ public:
     memcpy(buf, face_id_block.value(), face_id_block.value_size());
     face_id = ntohs(*(int *)buf);
 
-    std::cout << response_code << " " << response_text << ": Destroyed Face (FaceId: " 
+    std::cout << response_code << " " << response_text << ": Destroyed Face (FaceId: "
               << face_id << ")" << std::endl;
   }
 
@@ -306,12 +306,12 @@ public:
     uint64_t now = std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::system_clock::now().time_since_epoch()).count();
     const_cast<Name&>(interest.getName()).appendNumber(now);
     const_cast<Name&>(interest.getName()).appendNumber(now);
-    
+
     m_keyChain.sign(interest);
     cout << interest.getName().toUri() << endl;
 
     m_face.expressInterest(
-      interest, 
+      interest,
       bind(&NDNDClient::onAddFaceDataReply, this, _1, _2, uri),
       bind(&NDNDClient::onNack, this, _1, _2),
       bind(&NDNDClient::onTimeout, this, _1));
@@ -328,12 +328,12 @@ public:
     uint64_t now = std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::system_clock::now().time_since_epoch()).count();
     const_cast<Name&>(interest.getName()).appendNumber(now);
     const_cast<Name&>(interest.getName()).appendNumber(now + 1);
-    
+
     m_keyChain.sign(interest);
     cout << interest.getName().toUri() << endl;
 
     m_face.expressInterest(
-      interest, 
+      interest,
       bind(&NDNDClient::onDestroyFaceDataReply, this, _1, _2),
       bind(&NDNDClient::onNack, this, _1, _2),
       bind(&NDNDClient::onTimeout, this, _1));
