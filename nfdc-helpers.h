@@ -38,7 +38,8 @@ make_rib_register_interest_parameter(const Name& route_name, int face_id)
 }
 
 static Interest
-prepareRibRegisterInterest(const Name& route_name, int face_id, KeyChain& keychain)
+prepareRibRegisterInterest(const Name& route_name, int face_id, KeyChain& keychain,
+                           int cost = 0)
 {
   Name name("/localhost/nfd/rib/register");
   Block control_params = make_rib_register_interest_parameter(route_name, face_id);
@@ -73,6 +74,28 @@ prepareFaceDestroyInterest(int face_id, KeyChain& keychain)
   Name name("/localhost/nfd/faces/destroy");
   auto control_block = makeEmptyBlock(CONTROL_PARAMETERS);
   control_block.push_back(makeNonNegativeIntegerBlock(FACE_ID, face_id));
+  control_block.encode();
+  name.append(control_block);
+
+  security::CommandInterestSigner signer(keychain);
+  Interest interest = signer.makeCommandInterest(name);
+  interest.setMustBeFresh(true);
+  interest.setCanBePrefix(false);
+  return interest;
+}
+
+static Interest
+prepareStrategySetInterest(const std::string& prefix, const std::string& strategy,
+                           KeyChain& keychain) {
+  Name name("/localhost/nfd/strategy-choice/set");
+  
+  auto prefix_block = Name(prefix).wireEncode();
+  auto strategy_block = makeEmptyBlock(STRATEGY);
+  strategy_block.push_back(Name(strategy).wireEncode());
+
+  auto control_block = makeEmptyBlock(CONTROL_PARAMETERS);
+  control_block.push_back(prefix_block);
+  control_block.push_back(strategy_block);
   control_block.encode();
   name.append(control_block);
 

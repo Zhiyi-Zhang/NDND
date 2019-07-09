@@ -13,47 +13,69 @@
 #include <sstream>
 
 #include "nd-packet-format.h"
-#include "nfd-command-tlv.h"
 #include "nfdc-helpers.h"
 
 using namespace ndn;
 using namespace ndn::ndnd;
 using namespace std;
 
-
 class Options
 {
 public:
   Options()
-    : prefix("/ndn/nd")
+    : m_prefix("/test/01/02")
+    , server_prefix("/ndn/nd")
+    , server_ip("127.0.0.1")
+    // , server_ip("104.194.81.199")
   {
   }
-
 public:
-  ndn::Name prefix;
+  ndn::Name m_prefix;
+  ndn::Name server_prefix;
+  string server_ip;
 };
 
 
 class NDNDClient{
 public:
-
-  NDNDClient() {
-    // Set IP and port
+  NDNDClient(const Name& m_prefix, 
+             const Name& server_prefix, 
+             const string& server_ip)
+    : m_prefix(m_prefix)
+    , m_server_prefix(server_prefix)
+  {
     setIP();
     m_port = htons(6363); // default
+    inet_aton(server_ip.c_str(), &m_server_IP);
+
+    // Bootstrap face and route to server
+    std::string uri = "udp4://";
+    uri += inet_ntoa(m_server_IP);
+    uri += ':';
+    uri += to_string(6363);
+    addFace(uri, true);
   }
 
-  void send_rib_register_interest(const Name& route_name, int face_id) {
-    Interest interest = prepareRibRegisterInterest(route_name, face_id, m_keyChain);
+  // TODO: remove face on SIGINT, SIGTERM
+
+  void registerRoute(const Name& route_name, int face_id,
+                     int cost = 0, bool is_server_route = false) 
+  {
+    Interest interest = prepareRibRegisterInterest(route_name, face_id, m_keyChain, cost);
     m_face.expressInterest(
       interest,
-      bind(&NDNDClient::onRegisterRouteDataReply, this,  _1, _2),
-      bind(&NDNDClient::onNack, this,  _1, _2),
-      bind(&NDNDClient::onTimeout, this,  _1));
+      bind(&NDNDClient::onRegisterRouteDataReply, this, _1, _2, is_server_route),
+      bind(&NDNDClient::onNack, this, _1, _2),
+      bind(&NDNDClient::onTimeout, this, _1));
   }
 
+  // This function should be called repeatedly
+  void sendNDNDInterest()
+  {
+    // Wait for face to ND Server to be registered in NFD
+    if (!is_ready)
+      return;
 
-  void sendNDNDInterest(){
     Interest interest(Name("/ndn/nd"));
     interest.setInterestLifetime(30_s);
     interest.setMustBeFresh(true);
@@ -69,13 +91,14 @@ public:
 
     m_face.expressInterest(
       interest,
-      bind(&NDNDClient::onData, this,  _1, _2),
-      bind(&NDNDClient::onNack, this,  _1, _2),
-      bind(&NDNDClient::onTimeout, this,  _1));
+      bind(&NDNDClient::onData, this, _1, _2),
+      bind(&NDNDClient::onNack, this, _1, _2),
+      bind(&NDNDClient::onTimeout, this, _1));
   }
 
 // private:
-  void onData(const Interest& interest, const Data& data){
+  void onData(const Interest& interest, const Data& data)
+  {
     std::cout << data << std::endl;
 
     size_t dataSize = data.getContent().value_size();
@@ -103,19 +126,23 @@ public:
       m_uri_to_prefix[ss.str()] = name.toUri();
       cout << "URI: " << ss.str() << endl;
       addFace(ss.str());
+      setStrategy(name.toUri(), BEST_ROUTE);
     }
   }
 
-  void onNack(const Interest& interest, const lp::Nack& nack){
+  void onNack(const Interest& interest, const lp::Nack& nack)
+  {
     std::cout << "received Nack with reason " << nack.getReason()
               << " for interest " << interest << std::endl;
   }
 
-  void onTimeout(const Interest& interest){
+  void onTimeout(const Interest& interest)
+  {
     std::cout << "Timeout " << interest << std::endl;
   }
 
-  void make_NDND_interest_parameter(){
+  void make_NDND_interest_parameter()
+  {
     auto pParam = reinterpret_cast<PPARAMETER>(m_buffer);
     m_len = sizeof(PARAMETER);
 
@@ -126,12 +153,14 @@ public:
     pParam->TTL = 30 * 1000; //ms
     pParam->TimeStamp = chrono::duration_cast<chrono::milliseconds>(chrono::system_clock::now().time_since_epoch()).count();
 
-    Block block = m_namePrefix.wireEncode();
+    Block block = m_prefix.wireEncode();
     memcpy(pParam->NamePrefix, block.begin().base(), block.end() - block.begin());
     m_len += block.end() - block.begin();
   }
 
-  void onRegisterRouteDataReply(const Interest& interest, const Data& data){
+  void onRegisterRouteDataReply(const Interest& interest, const Data& data,
+                                bool is_server_route)
+  {
     Block response_block = data.getContent().blockFromValue();
     response_block.parse();
 
@@ -168,16 +197,20 @@ public:
       std::cout << "Route cost: " << route_cost << std::endl;
       std::cout << "Flags: " << flags << std::endl;
 
+      if (is_server_route) {
+        is_ready = true;
+        std::cout << "Client bootstrap succeeded\n";
+      }
     }
     else {
       std::cout << "\nRegistration of route failed." << std::endl;
       std::cout << "Status text: " << response_text << std::endl;
-
     }
-
   }
 
-  void onAddFaceDataReply(const Interest& interest, const Data& data, const string& uri) {
+  void onAddFaceDataReply(const Interest& interest, const Data& data,
+                          const string& uri, bool is_server_face) 
+  {
     short response_code;
     char response_text[1000] = {0};
     char buf[1000]           = {0};   // For parsing
@@ -200,11 +233,16 @@ public:
                 << face_id << "): " << uri << std::endl;
 
       auto it = m_uri_to_prefix.find(uri);
-      if (it != m_uri_to_prefix.end()) {
-        send_rib_register_interest(it->second, face_id);
+      if (is_server_face) {
+        registerRoute(Name("/ndn/nd"), face_id, 10, true);
+        m_server_faceid = face_id;
+      }
+      else if (it != m_uri_to_prefix.end()) {
+        registerRoute(it->second, face_id);
+        registerRoute(it->second, m_server_faceid);
       }
       else {
-	      std::cerr << "Failed to find prefix  for uri " << uri << std::endl;
+	      std::cerr << "Failed to find prefix for uri " << uri << std::endl;
       }
 
     }
@@ -214,7 +252,8 @@ public:
     }
   }
 
-  void onDestroyFaceDataReply(const Interest& interest, const Data& data) {
+  void onDestroyFaceDataReply(const Interest& interest, const Data& data) 
+  {
     short response_code;
     char response_text[1000] = {0};
     char buf[1000]           = {0};   // For parsing
@@ -239,16 +278,19 @@ public:
               << face_id << ")" << std::endl;
   }
 
-  void addFace(string uri) {
+  void addFace(const string& uri, bool is_server_face = false) 
+  {
+    printf("Adding face: %s\n", uri.c_str());
     Interest interest = prepareFaceCreationInterest(uri, m_keyChain);
     m_face.expressInterest(
       interest,
-      bind(&NDNDClient::onAddFaceDataReply, this, _1, _2, uri),
+      bind(&NDNDClient::onAddFaceDataReply, this, _1, _2, uri, is_server_face),
       bind(&NDNDClient::onNack, this, _1, _2),
       bind(&NDNDClient::onTimeout, this, _1));
   }
 
-  void destroyFace(int face_id) {
+  void destroyFace(int face_id) 
+  {
     Interest interest = prepareFaceDestroyInterest(face_id, m_keyChain);
     m_face.expressInterest(
       interest,
@@ -257,7 +299,35 @@ public:
       bind(&NDNDClient::onTimeout, this, _1));
   }
 
-  void setIP() {
+  void onSetStrategyDataReply(const Interest& interest, const Data& data) 
+  {
+    Block response_block = data.getContent().blockFromValue();
+    response_block.parse();
+    int responseCode = readNonNegativeIntegerAs<int>(response_block.get(STATUS_CODE));
+    std::string responseTxt = readString(response_block.get(STATUS_TEXT));
+
+    if (responseCode == OK) {
+      Block status_parameter_block = response_block.get(CONTROL_PARAMETERS);
+      status_parameter_block.parse();
+      std::cout << "\nSet strategy succeeded." << std::endl;
+    } else {
+      std::cout << "\nSet strategy failed." << std::endl;
+      std::cout << "Status text: " << responseTxt << std::endl;
+    }
+  }
+
+  void setStrategy(const string& uri, const string& strategy) 
+  {
+    Interest interest = prepareStrategySetInterest(uri, strategy, m_keyChain);
+    m_face.expressInterest(
+      interest,
+      bind(&NDNDClient::onSetStrategyDataReply, this, _1, _2),
+      bind(&NDNDClient::onNack, this, _1, _2),
+      bind(&NDNDClient::onTimeout, this, _1));
+  }
+
+  void setIP() 
+  {
     struct ifaddrs *ifaddr, *ifa;
     int family, s;
     char host[NI_MAXHOST];
@@ -268,35 +338,39 @@ public:
     }
 
     for (ifa = ifaddr; ifa != NULL; ifa = ifa->ifa_next) {
-        if (ifa->ifa_addr == NULL)
-            continue;
+      if (ifa->ifa_addr == NULL)
+        continue;
 
-        s=getnameinfo(ifa->ifa_addr,sizeof(struct sockaddr_in),host, NI_MAXHOST, NULL, 0, NI_NUMERICHOST);
-        s=getnameinfo(ifa->ifa_netmask,sizeof(struct sockaddr_in),netmask, NI_MAXHOST, NULL, 0, NI_NUMERICHOST);
+      s=getnameinfo(ifa->ifa_addr,sizeof(struct sockaddr_in),host, NI_MAXHOST, NULL, 0, NI_NUMERICHOST);
+      s=getnameinfo(ifa->ifa_netmask,sizeof(struct sockaddr_in),netmask, NI_MAXHOST, NULL, 0, NI_NUMERICHOST);
 
-        if (ifa->ifa_addr->sa_family==AF_INET) {
-            if (s != 0) {
-                printf("getnameinfo() failed: %s\n", gai_strerror(s));
-                exit(EXIT_FAILURE);
-            }
-            if (ifa->ifa_name[0] == 'l' && ifa->ifa_name[1] == 'o')   // Loopback
-              continue;
-            printf("\tInterface : <%s>\n", ifa->ifa_name);
-            printf("\t  Address : <%s>\n", host);
-            inet_aton(host, &m_IP);
-            inet_aton(netmask, &m_submask);
-            break;
+      if (ifa->ifa_addr->sa_family==AF_INET) {
+        if (s != 0) {
+          printf("getnameinfo() failed: %s\n", gai_strerror(s));
+          exit(EXIT_FAILURE);
         }
+        if (ifa->ifa_name[0] == 'l' && ifa->ifa_name[1] == 'o')   // Loopback
+          continue;
+        printf("\tInterface : <%s>\n", ifa->ifa_name);
+        printf("\t  Address : <%s>\n", host);
+        inet_aton(host, &m_IP);
+        inet_aton(netmask, &m_submask);
+        break;
+      }
     }
     freeifaddrs(ifaddr);
   }
 
 public:
+  bool is_ready = false;    // Ready after creating face and route to ND server
   Face m_face;
   KeyChain m_keyChain;
-  Name m_namePrefix;
+  Name m_prefix;
+  Name m_server_prefix;
   in_addr m_IP;
   in_addr m_submask;
+  in_addr m_server_IP;
+  int m_server_faceid;
   uint16_t m_port;
   uint8_t m_buffer[4096];
   size_t m_len;
@@ -311,11 +385,9 @@ public:
     : m_options(options)
   {
     // Init client
-    m_client = new NDNDClient();
-    // inet_aton("localhost", &m_client->m_IP);           // TODO: Bootstrap
-    // inet_aton("255.255.255.0", &m_client->m_submask);  // TODO: Bootstrap
-    // m_client->m_port = htons(6363);
-    m_client->m_namePrefix = Name("/test/01/02");
+    m_client = new NDNDClient(m_options.m_prefix,
+                              m_options.server_prefix, 
+                              m_options.server_ip);
 
     m_scheduler = new Scheduler(m_client->m_face.getIoService());
     loop();

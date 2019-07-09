@@ -26,4 +26,7 @@ enum NFD_COMMAND_TLV_TYPE {
   STATUS_TEXT = 0x67,
 };
 
+#define BEST_ROUTE "/localhost/nfd/strategy/best-route"
+#define MULTICAST "/localhost/nfd/strategy/multicast"
+
 #endif // NFD_COMMAND_TLV_H
