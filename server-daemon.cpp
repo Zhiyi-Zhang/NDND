@@ -99,13 +99,13 @@ NDServer::onInterest(const Interest& request)
       m_db.erase(it);
     }
     else {
-      // else, check the masked IP address, add the entry to the reply if it matches
-      uint8_t itemIpPrefix[16] = {0};
-      for (int i = 0; i < 16; i++) {
-        itemIpPrefix[i] = item.ip[i] & item.mask[i];
-        std::cout << itemIpPrefix[i] << std::endl;
-      }
-      if (memcmp(ipMatch, itemIpPrefix, 16) == 0) {
+      // // else, check the masked IP address, add the entry to the reply if it matches
+      // uint8_t itemIpPrefix[16] = {0};
+      // for (int i = 0; i < 16; i++) {
+      //   itemIpPrefix[i] = (item.ip[i] & item.mask[i]);
+      //   std::cout << itemIpPrefix[i] << std::endl;
+      // }
+      // if (memcmp(ipMatch, itemIpPrefix, 16) == 0) {
         struct RESULT result;
         result.V4 = item.v4? 1 : 0;
         memcpy(result.IpAddr, item.ip, 16);
@@ -121,7 +121,7 @@ NDServer::onInterest(const Interest& request)
         }
         counter++;
         it++;
-      }
+      // }
       if (counter > 10)
         break;
     }
