@@ -76,7 +76,7 @@ NDServer::onInterest(const Interest& request)
   parseInterest(request, entry);
   uint8_t ipMatch[16] = {0};
   for (int i = 0; i < 16; i++) {
-    ipMatch[i] = entry.ip[i] & entry.mask[i];
+    ipMatch[i] = (entry.ip[i] & entry.mask[i]);
   }
 
   Buffer contentBuf;
@@ -96,14 +96,17 @@ NDServer::onInterest(const Interest& request)
     milliseconds ms = duration_cast<milliseconds>(system_clock::now().time_since_epoch());
     if (item.tp + item.ttl < ms.count()) {
       // if the entry is out-of-date, erase it
-      m_db.erase(it);
+      it = m_db.erase(it);
     }
     else {
-      // // else, check the masked IP address, add the entry to the reply if it matches
-      // uint8_t itemIpPrefix[16] = {0};
-      // for (int i = 0; i < 16; i++) {
-      //   itemIpPrefix[i] = (item.ip[i] & item.mask[i]);
-      //   std::cout << itemIpPrefix[i] << std::endl;
+      // else, check the masked IP address, add the entry to the reply if it matches
+      uint8_t itemIpPrefix[16] = {0};
+      for (int i = 0; i < 16; i++) {
+        itemIpPrefix[i] = (item.ip[i] & item.mask[i]);
+        // std::cout << itemIpPrefix[i] << std::endl;
+      }
+      // for(int i = 0; i < 16; i ++){
+      //   printf("%02X %02X\n", ipMatch[i], itemIpPrefix[i]);
       // }
       // if (memcmp(ipMatch, itemIpPrefix, 16) == 0) {
         struct RESULT result;
@@ -120,8 +123,8 @@ NDServer::onInterest(const Interest& request)
           contentBuf.push_back(*(block.wire() + i));
         }
         counter++;
-        it++;
       // }
+      ++it;
       if (counter > 10)
         break;
     }
