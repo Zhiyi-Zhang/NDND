@@ -234,12 +234,12 @@ public:
 
       auto it = m_uri_to_prefix.find(uri);
       if (is_server_face) {
-        registerRoute(Name("/ndn/nd"), face_id, 10, true);
+        registerRoute(Name("/ndn/nd"), face_id, 10, is_server_face);
         m_server_faceid = face_id;
       }
       else if (it != m_uri_to_prefix.end()) {
-        registerRoute(it->second, face_id);
-        registerRoute(it->second, m_server_faceid);
+        registerRoute(it->second, face_id, 0, is_server_face);
+        registerRoute(it->second, m_server_faceid, 10, is_server_face);
       }
       else {
 	      std::cerr << "Failed to find prefix for uri " << uri << std::endl;
