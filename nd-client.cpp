@@ -25,8 +25,8 @@ public:
   Options()
     : m_prefix("/test/01/02")
     , server_prefix("/ndn/nd")
-    , server_ip("127.0.0.1")
-    // , server_ip("104.194.81.199")
+    // , server_ip("127.0.0.1")
+    , server_ip("104.194.81.199")
   {
   }
 public:
@@ -224,7 +224,7 @@ public:
     memcpy(response_text, status_text_block.value(), status_text_block.value_size());
 
     // Get FaceId for future removal of the face
-    if (response_code == OK) {
+    if (response_code == OK || response_code == FACE_EXISTS) {
       Block status_parameter_block =  response_block.get(CONTROL_PARAMETERS);
       status_parameter_block.parse();
       Block face_id_block = status_parameter_block.get(FACE_ID);

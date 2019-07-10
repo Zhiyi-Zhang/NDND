@@ -21,7 +21,7 @@ getFaceUri(const DBEntry& entry)
   std::string result = "udp4://";
   result += inet_ntoa(*(in_addr*)(entry.ip));
   result += ':';
-  result += std::to_string(entry.port);
+  result += std::to_string(htons(entry.port));
   return result;
 }
 
@@ -200,7 +200,7 @@ NDServer::onData(const Data& data, DBEntry& entry)
     std::string responseTxt = readString(response_block.get(STATUS_TEXT));
 
     // Get FaceId for future removal of the face
-    if (responseCode == OK) {
+    if (responseCode == OK || responseCode == FACE_EXISTS) {
       Block status_parameter_block = response_block.get(CONTROL_PARAMETERS);
       status_parameter_block.parse();
       int face_id = readNonNegativeIntegerAs<int>(status_parameter_block.get(FACE_ID));

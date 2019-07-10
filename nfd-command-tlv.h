@@ -3,6 +3,7 @@
 
 enum NFD_STATUS_CODE {
   OK = 200,
+  FACE_EXISTS = 409
 };
 
 enum NFD_COMMAND_TLV_TYPE {
