@@ -99,31 +99,21 @@ NDServer::onInterest(const Interest& request)
       it = m_db.erase(it);
     }
     else {
-      // else, check the masked IP address, add the entry to the reply if it matches
-      uint8_t itemIpPrefix[16] = {0};
-      for (int i = 0; i < 16; i++) {
-        itemIpPrefix[i] = (item.ip[i] & item.mask[i]);
-        // std::cout << itemIpPrefix[i] << std::endl;
-      }
-      // for(int i = 0; i < 16; i ++){
-      //   printf("%02X %02X\n", ipMatch[i], itemIpPrefix[i]);
-      // }
-      // if (memcmp(ipMatch, itemIpPrefix, 16) == 0) {
-        struct RESULT result;
-        result.V4 = item.v4? 1 : 0;
-        memcpy(result.IpAddr, item.ip, 16);
-        result.Port = item.port;
-        memcpy(result.SubnetMask, item.mask, 16);
+      // else, add the entry to the reply if it matches
+      struct RESULT result;
+      result.V4 = item.v4? 1 : 0;
+      memcpy(result.IpAddr, item.ip, 16);
+      result.Port = item.port;
+      memcpy(result.SubnetMask, item.mask, 16);
 
-        for (int i = 0; i < sizeof(struct RESULT); i++) {
-          contentBuf.push_back(*((uint8_t*)&result + i));
-        }
-        auto block = item.prefix.wireEncode();
-        for (int i =0; i < block.size(); i++) {
-          contentBuf.push_back(*(block.wire() + i));
-        }
-        counter++;
-      // }
+      for (int i = 0; i < sizeof(struct RESULT); i++) {
+        contentBuf.push_back(*((uint8_t*)&result + i));
+      }
+      auto block = item.prefix.wireEncode();
+      for (int i =0; i < block.size(); i++) {
+        contentBuf.push_back(*(block.wire() + i));
+      }
+      counter++;
       ++it;
       if (counter > 10)
         break;
