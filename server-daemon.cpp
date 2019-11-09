@@ -44,7 +44,7 @@ NDServer::subscribeBack(const std::string& url)
   for (auto it = m_db.begin(); it != m_db.end();) {
     bool is_Prefix = it->prefix.isPrefixOf(name);
     if (is_Prefix) {
-      std::cout << "Subscribe Back to " << url << std::endl;
+      std::cout << "NDND (RV): Subscribe Back to " << url << std::endl;
       name.append("nd-info");
       name.appendTimestamp();
       Interest interest(name);
@@ -54,7 +54,7 @@ NDServer::subscribeBack(const std::string& url)
       interest.setCanBePrefix(false);
       // wait until entry confirmed
       if (!it->confirmed) {
-        std::cout << "Entry not confirmed, try again 1 sec later: " << interest << std::endl;
+        std::cout << "NDND (RV): Entry not confirmed, try again 1 sec later: " << interest << std::endl;
         m_scheduler->schedule(time::seconds(1), [this, url] {
           subscribeBack(url);
         });
@@ -64,7 +64,6 @@ NDServer::subscribeBack(const std::string& url)
                             std::bind(&NDServer::onSubData, this, _2),
                             std::bind(&NDServer::onNack, this, _1, _2),
                             std::bind(&NDServer::onSubTimeout, this, _1));
-      std::cout << "Subscribe Back Interest: " << interest << std::endl;
       m_scheduler->schedule(time::seconds(10), [this, url] {
           subscribeBack(url);
       });
@@ -83,7 +82,7 @@ void
 NDServer::onSubData(const Data& data)
 {
   DBEntry& entry = findEntry(data.getName());
-  std::cout << "Record Updated/Confirmed from " << entry.prefix << std::endl;
+  std::cout << "NDND (RV): Record Updated/Confirmed from " << entry.prefix << std::endl;
   auto ptr = data.getContent().value();
   memcpy(entry.ip, ptr, sizeof(entry.ip));
 }
@@ -116,7 +115,7 @@ NDServer::parseInterest(const Interest& interest, DBEntry& entry)
       }
       entry.prefix = prefix;
 
-      std::cout << "Arrival, Name is: " << entry.prefix.toUri() << std::endl;
+      std::cout << "NDND (RV): Arrival Name is " << entry.prefix.toUri() << std::endl;
 
       // AddRoute and Subscribe Back
       entry.confirmed = false;
@@ -149,7 +148,7 @@ NDServer::registerPrefix(const Name& prefix)
 void 
 NDServer::onNack(const Interest& interest, const lp::Nack& nack)
 {
-  std::cout << "received Nack with reason " << nack.getReason()
+  std::cout << "NDND (RV): received Nack with reason " << nack.getReason()
             << " for interest " << interest << std::endl;
   removeRoute(findEntry(interest.getName()));
 }
@@ -172,7 +171,7 @@ NDServer::onInterest(const Interest& request)
     milliseconds ms = duration_cast<milliseconds>(system_clock::now().time_since_epoch());
     if (item.tp + item.ttl < ms.count()) {
       // if the entry is out-of-date, erase it
-      std::cout << "Entry out date: " << it->prefix << std::endl;
+      std::cout << "NDND (RV): Entry out date: " << it->prefix << std::endl;
       it = m_db.erase(it);
     }
     else {
@@ -189,7 +188,7 @@ NDServer::onInterest(const Interest& request)
       for (int i =0; i < block.size(); i++) {
         contentBuf.push_back(*(block.wire() + i));
       }
-      std::cout << "Pushing Back one record " << std::endl;
+      std::cout << "NDND (RV): Pushing Back one record " << std::endl;
       counter++;
       ++it;
       if (counter > 10)
@@ -210,7 +209,7 @@ NDServer::onInterest(const Interest& request)
   // m_keyChain.sign(*m_data, signInfo);
   data->setFreshnessPeriod(time::milliseconds(4000));
   m_face.put(*data);
-  std::cout << "Putting Data back: " << std::endl << *data << std::endl;
+  std::cout << "NDND (RV): Putting Data back: " << std::endl << *data << std::endl;
 }
 
 void
@@ -321,7 +320,7 @@ NDServer::onData(const Data& data, DBEntry& entry)
     for (auto it = m_db.begin(); it != m_db.end();) {
       bool is_Prefix = it->prefix.isPrefixOf(entry.prefix);
       if (is_Prefix) {
-        std::cout << "Erasing... " << it->prefix.toUri() << std::endl;
+        std::cout << "NDND (RV): Erasing... " << it->prefix.toUri() << std::endl;
         it = m_db.erase(it);
         break;
       }

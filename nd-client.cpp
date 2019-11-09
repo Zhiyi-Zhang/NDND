@@ -92,13 +92,13 @@ public:
     // m_keyChain.sign(*m_data, signInfo);
     data->setFreshnessPeriod(time::milliseconds(4000));
     m_face.put(*data);
-    cout << "Publishing Data: " << *data << endl;
+    cout << "NDND (Client): Publishing Data: " << *data << endl;
   }
   
   void sendArrivalInterest()
   {
     if (!is_ready) {
-      std::cout << "not ready, try again" << std::endl;
+      std::cout << "NDND (Client): not ready, try again" << std::endl;
       m_scheduler->schedule(time::seconds(1), [this] {
           sendArrivalInterest();
       });
@@ -114,7 +114,7 @@ public:
     interest.setNonce(4);
     interest.setCanBePrefix(false); 
 
-    cout << "Arrival Interest: " << interest << endl;
+    cout << "NDND (Client): Arrival Interest: " << interest << endl;
 
     m_face.expressInterest(interest, nullptr, bind(&NDNDClient::onNack, this, _1, _2), //no expectation
                            nullptr); //no expectation
@@ -125,7 +125,7 @@ public:
     Name name(m_prefix);
     name.append("nd-info");
     m_face.setInterestFilter(InterestFilter(name), bind(&NDNDClient::onSubInterest, this, _2), nullptr);
-    cout << "Register Prefix: " << name << endl;
+    cout << "NDND (Client): Register Prefix: " << name << endl;
   }
 
 
@@ -240,7 +240,7 @@ public:
 
       if (is_server_route) {
         is_ready = true;
-        std::cout << "Client bootstrap succeeded\n";
+        std::cout << "NDND (Client): Bootstrap succeeded\n";
       }
 
       is_ready = true;
@@ -323,7 +323,7 @@ public:
 
   void addFace(const string& uri, bool is_server_face = false) 
   {
-    printf("Adding face: %s\n", uri.c_str());
+    printf("NDND (Client): Adding face: %s\n", uri.c_str());
     Interest interest = prepareFaceCreationInterest(uri, m_keyChain);
     m_face.expressInterest(
       interest,
