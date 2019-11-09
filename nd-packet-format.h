@@ -22,7 +22,6 @@ typedef struct RESULT{
   uint8_t V4;
   uint8_t IpAddr[16];
   uint16_t Port;
-  uint8_t SubnetMask[16];
   uint8_t NamePrefix[0];
 } *PRESULT;
 #pragma pack()

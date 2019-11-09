@@ -26,7 +26,7 @@ public:
     : m_prefix("/test/01/02")
     , server_prefix("/ndn/nd")
     // , server_ip("127.0.0.1")
-    , server_ip("104.194.81.199")
+    , server_ip("131.179.176.110")
   {
   }
 public:
@@ -44,6 +44,8 @@ public:
     : m_prefix(m_prefix)
     , m_server_prefix(server_prefix)
   {
+    m_scheduler = new Scheduler(m_face.getIoService());
+    is_ready = false;
     setIP();
     m_port = htons(6363); // default
     inet_aton(server_ip.c_str(), &m_server_IP);
@@ -69,35 +71,85 @@ public:
       bind(&NDNDClient::onTimeout, this, _1));
   }
 
-  // This function should be called repeatedly
-  void sendNDNDInterest()
+  void onSubInterest(const Interest& subInterest)
+  {
+    // reply data with IP confirmation
+    Buffer contentBuf;
+    for (int i = 0; i < sizeof(m_IP); i++) {
+      contentBuf.push_back(*((uint8_t*)&m_IP + i));
+    }
+
+    auto data = make_shared<Data>(subInterest.getName());
+    if (contentBuf.size() > 0) {
+      data->setContent(contentBuf.get<uint8_t>(), contentBuf.size());
+    }
+    else {
+      return;
+    }
+
+    m_keyChain.sign(*data, security::SigningInfo(security::SigningInfo::SIGNER_TYPE_SHA256));
+    // security::SigningInfo signInfo(security::SigningInfo::SIGNER_TYPE_ID, m_options.identity);
+    // m_keyChain.sign(*m_data, signInfo);
+    data->setFreshnessPeriod(time::milliseconds(4000));
+    m_face.put(*data);
+    cout << "Publishing Data: " << *data << endl;
+  }
+  
+  void sendArrivalInterest()
+  {
+    if (!is_ready) {
+      std::cout << "not ready, try again" << std::endl;
+      m_scheduler->schedule(time::seconds(1), [this] {
+          sendArrivalInterest();
+      });
+      return;
+    }
+    Name name("/ndn/nd/arrival");
+    name.append((uint8_t*)&m_IP, sizeof(m_IP)).append((uint8_t*)&m_port, sizeof(m_port));
+    name.appendNumber(m_prefix.size()).append(m_prefix).appendTimestamp();
+
+    Interest interest(name);
+    interest.setInterestLifetime(30_s);
+    interest.setMustBeFresh(true);
+    interest.setNonce(4);
+    interest.setCanBePrefix(false); 
+
+    cout << "Arrival Interest: " << interest << endl;
+
+    m_face.expressInterest(interest, nullptr, bind(&NDNDClient::onNack, this, _1, _2), //no expectation
+                           nullptr); //no expectation
+  }
+
+  void registerSubPrefix()
+  {
+    Name name(m_prefix);
+    name.append("nd-info");
+    m_face.setInterestFilter(InterestFilter(name), bind(&NDNDClient::onSubInterest, this, _2), nullptr);
+    cout << "Register Prefix: " << name << endl;
+  }
+
+
+  void sendSubInterest()
   {
     // Wait for face to ND Server to be registered in NFD
     if (!is_ready)
       return;
-
-    Interest interest(Name("/ndn/nd"));
+    Name name("/ndn/nd");
+    name.appendTimestamp();
+    Interest interest(name);
     interest.setInterestLifetime(30_s);
     interest.setMustBeFresh(true);
-    make_NDND_interest_parameter();
-    interest.setApplicationParameters(m_buffer, m_len);
     interest.setNonce(4);
     interest.setCanBePrefix(false);
 
-    name::Component parameterDigest = name::Component::fromParametersSha256Digest(
-      util::Sha256::computeDigest(interest.getApplicationParameters().wire(), interest.getApplicationParameters().size()));
-
-    const_cast<Name&>(interest.getName()).append(parameterDigest);
-
-    m_face.expressInterest(
-      interest,
-      bind(&NDNDClient::onData, this, _1, _2),
-      bind(&NDNDClient::onNack, this, _1, _2),
-      bind(&NDNDClient::onTimeout, this, _1));
+    m_face.expressInterest(interest,
+                           bind(&NDNDClient::onSubData, this, _1, _2),
+                           bind(&NDNDClient::onNack, this, _1, _2),
+                           bind(&NDNDClient::onTimeout, this, _1));
   }
 
 // private:
-  void onData(const Interest& interest, const Data& data)
+  void onSubData(const Interest& interest, const Data& data)
   {
     std::cout << data << std::endl;
 
@@ -113,7 +165,6 @@ public:
       std::stringstream ss;
       ss << "udp4://" << inet_ntoa(*(in_addr*)(pResult->IpAddr)) << ':' << ntohs(pResult->Port);
       printf("Port: %hu\n", ntohs(pResult->Port));
-      printf("Subnet Mask: %s\n", inet_ntoa(*(in_addr*)(pResult->SubnetMask)));
 
       auto result = Block::fromBuffer(pResult->NamePrefix, data.getContent().value() + dataSize - pResult->NamePrefix);
       name.wireDecode(std::get<1>(result));
@@ -125,6 +176,13 @@ public:
 
       m_uri_to_prefix[ss.str()] = name.toUri();
       cout << "URI: " << ss.str() << endl;
+
+      // Do not register route to myself
+      if (strcmp(inet_ntoa(*(in_addr*)(pResult->IpAddr)), inet_ntoa(m_IP)) == 0) {
+        cout << "My IP address returned" << endl;
+        continue;
+      }
+
       addFace(ss.str());
       setStrategy(name.toUri(), BEST_ROUTE);
     }
@@ -139,23 +197,6 @@ public:
   void onTimeout(const Interest& interest)
   {
     std::cout << "Timeout " << interest << std::endl;
-  }
-
-  void make_NDND_interest_parameter()
-  {
-    auto pParam = reinterpret_cast<PPARAMETER>(m_buffer);
-    m_len = sizeof(PARAMETER);
-
-    pParam->V4 = 1;
-    memcpy(pParam->IpAddr, &m_IP, sizeof(in_addr_t));
-    pParam->Port = m_port;
-    memcpy(pParam->SubnetMask, &m_submask, sizeof(in_addr_t));
-    pParam->TTL = 30 * 1000; //ms
-    pParam->TimeStamp = chrono::duration_cast<chrono::milliseconds>(chrono::system_clock::now().time_since_epoch()).count();
-
-    Block block = m_prefix.wireEncode();
-    memcpy(pParam->NamePrefix, block.begin().base(), block.end() - block.begin());
-    m_len += block.end() - block.begin();
   }
 
   void onRegisterRouteDataReply(const Interest& interest, const Data& data,
@@ -201,6 +242,8 @@ public:
         is_ready = true;
         std::cout << "Client bootstrap succeeded\n";
       }
+
+      is_ready = true;
     }
     else {
       std::cout << "\nRegistration of route failed." << std::endl;
@@ -369,6 +412,7 @@ public:
   Name m_server_prefix;
   in_addr m_IP;
   in_addr m_submask;
+  Scheduler *m_scheduler;
   in_addr m_server_IP;
   int m_server_faceid;
   uint16_t m_port;
@@ -390,12 +434,14 @@ public:
                               m_options.server_ip);
 
     m_scheduler = new Scheduler(m_client->m_face.getIoService());
+    m_client->registerSubPrefix();
+    m_client->sendArrivalInterest();
     loop();
   }
 
   void loop() {
-    m_client->sendNDNDInterest();
-    m_scheduler->schedule(time::seconds(1), [this] {
+    m_client->sendSubInterest();
+    m_scheduler->schedule(time::seconds(3), [this] {
       loop();
     });
   }

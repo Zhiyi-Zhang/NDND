@@ -12,7 +12,29 @@ namespace ndn {
 namespace ndnd {
 
 static Block
-make_rib_register_interest_parameter(const Name& route_name, int face_id)
+make_rib_unregeister_interest_parameter(const Name& route_name, int face_id)
+{
+  auto block = makeEmptyBlock(CONTROL_PARAMETERS);
+  Block route_name_block = route_name.wireEncode();
+  Block face_id_block = makeNonNegativeIntegerBlock(FACE_ID, face_id);
+  Block origin_block = makeNonNegativeIntegerBlock(ORIGIN, 0xFF);
+
+  block.push_back(route_name_block);
+  block.push_back(face_id_block);
+  block.push_back(origin_block);
+
+  std::cerr << "Route name block:" << std::endl;
+  std::cerr << route_name_block << std::endl;
+  std::cerr << "Face id block:" << std::endl;
+  std::cerr << face_id_block << std::endl;
+  std::cerr << "Control parameters block:" << std::endl;
+  std::cerr << block << std::endl;
+  block.encode();
+  return block;
+}
+
+static Block
+make_rib_interest_parameter(const Name& route_name, int face_id)
 {
   auto block = makeEmptyBlock(CONTROL_PARAMETERS);
   Block route_name_block = route_name.wireEncode();
@@ -38,11 +60,26 @@ make_rib_register_interest_parameter(const Name& route_name, int face_id)
 }
 
 static Interest
+prepareRibUnregisterInterest(const Name& route_name, int face_id, KeyChain& keychain,
+                           int cost = 0)
+{
+  Name name("/localhost/nfd/rib/unregister");
+  Block control_params = make_rib_unregeister_interest_parameter(route_name, face_id);
+  name.append(control_params);
+
+  security::CommandInterestSigner signer(keychain);
+  Interest interest = signer.makeCommandInterest(name);
+  interest.setMustBeFresh(true);
+  interest.setCanBePrefix(false);
+  return interest;
+}
+
+static Interest
 prepareRibRegisterInterest(const Name& route_name, int face_id, KeyChain& keychain,
                            int cost = 0)
 {
   Name name("/localhost/nfd/rib/register");
-  Block control_params = make_rib_register_interest_parameter(route_name, face_id);
+  Block control_params = make_rib_interest_parameter(route_name, face_id);
   name.append(control_params);
 
   security::CommandInterestSigner signer(keychain);
